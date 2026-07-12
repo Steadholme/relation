@@ -8,7 +8,7 @@
     "browser:smoke": "node tools/browser-smoke.mjs",
     "check": "node --check server.mjs && node --check src/model.mjs && node --check src/graph.mjs && node --check src/app.mjs",
     "test": "node --test tests/*.test.mjs",
-    "verify": "npm run check && npm test"
+    "verify": "npm run check && npm test && npm run browser:smoke"
   },
   "engines": {
     "node": ">=24"

@@ -8,7 +8,7 @@
   <title>Heartlines · 心轨</title>
   <link rel="icon" href="/assets/heartlines.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/vendor/odyssey-foundation.css">
+  <link rel="stylesheet" href="/vendor/odyssey-foundation-1.0.css">
   <link rel="stylesheet" href="/styles.css">
   <script defer type="module" src="/src/app.mjs"></script>
 </head>
@@ -57,7 +57,7 @@
     </header>
 
     <main id="relationWorkspace" class="workspace">
-      <aside class="control-rail" aria-label="图谱控制台">
+      <aside id="controlRail" class="control-rail" aria-label="图谱控制台">
         <div class="rail__header">
           <div>
             <p class="coordinate-label">FIELD CONTROLS</p>
@@ -273,7 +273,7 @@
         </div>
       </section>
 
-      <aside class="inspector" aria-labelledby="inspectorTitle">
+      <aside id="inspectorPanel" class="inspector" aria-labelledby="inspectorTitle">
         <div class="inspector__handle" aria-hidden="true"></div>
         <header class="inspector__header">
           <p id="inspectorKicker" class="coordinate-label">SELECTION / NONE</p>
@@ -297,11 +297,11 @@
     </main>
 
     <nav class="mobile-dock" aria-label="移动端快捷操作">
-      <button type="button" data-mobile-action="controls" aria-label="打开控制台" aria-controls="relationWorkspace">
+      <button type="button" data-mobile-action="controls" aria-label="打开控制台" aria-controls="controlRail" aria-expanded="false">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2m4 0h10M14 4v6M6 14v6"/></svg>
         <span>控制</span>
       </button>
-      <button type="button" data-mobile-action="search" aria-label="搜索人物" aria-controls="searchInput">
+      <button type="button" data-mobile-action="search" aria-label="搜索人物" aria-controls="controlRail" aria-expanded="false">
         <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
         <span>搜索</span>
       </button>
@@ -309,11 +309,11 @@
         <span aria-hidden="true">＋</span>
         <small>添加</small>
       </button>
-      <button type="button" data-mobile-action="path" aria-label="查找关系路径" aria-controls="pathSource">
+      <button type="button" data-mobile-action="path" aria-label="查找关系路径" aria-controls="controlRail" aria-expanded="false">
         <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="17" r="2"/><circle cx="19" cy="7" r="2"/><path d="M7 16c4-1 5-7 10-8"/></svg>
         <span>路径</span>
       </button>
-      <button type="button" data-mobile-action="selection" aria-label="打开所选详情" aria-controls="inspectorBody">
+      <button type="button" data-mobile-action="selection" aria-label="打开所选详情" aria-controls="inspectorPanel" aria-expanded="false">
         <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c.8-4 3.2-6 7-6s6.2 2 7 6"/></svg>
         <span>详情</span>
       </button>

@@ -85,16 +85,10 @@ function parsePath(requestUrl) {
 }
 
 function cacheControlFor(pathname) {
-  if (pathname === "/" || pathname.endsWith(".html") || pathname.endsWith(".webmanifest")) {
-    return "no-cache";
-  }
-  if (pathname.startsWith("/vendor/")) {
+  if (pathname === "/vendor/odyssey-foundation-1.0.css") {
     return "public, max-age=31536000, immutable";
   }
-  if (pathname.startsWith("/assets/")) {
-    return "public, max-age=86400, stale-while-revalidate=604800";
-  }
-  return "public, max-age=3600, must-revalidate";
+  return "no-cache";
 }
 
 async function resolveAsset(pathname) {

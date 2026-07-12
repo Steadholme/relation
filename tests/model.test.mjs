@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DOCUMENT_LIMITS,
   RELATION_KINDS,
   assertValidDocument,
   cloneDocument,
@@ -19,6 +20,7 @@ import {
   validateDocument,
   yearBounds,
 } from "../src/model.mjs";
+import { HeartGraph } from "../src/graph.mjs";
 
 function memoryStorage() {
   const values = new Map();
@@ -225,6 +227,114 @@ test("dangling endpoint、自环和非法日期会被明确报告", () => {
     assert.ok(Array.isArray(error.errors));
     return /Invalid relationship document/.test(error.message);
   });
+});
+
+test("文档规模与字符串长度边界阻止过量本地数据进入图布局", () => {
+  const tooManyPeople = emptyDocument();
+  tooManyPeople.people = Array.from(
+    { length: DOCUMENT_LIMITS.people + 1 },
+    (_, index) => ({ id: `person-${index}`, name: `人物${index}` }),
+  );
+  assert.ok(
+    validateDocument(tooManyPeople).errors.some((error) =>
+      error.includes(`at most ${DOCUMENT_LIMITS.people} entries`)),
+  );
+
+  const tooManyRelationships = emptyDocument();
+  tooManyRelationships.relationships = Array.from(
+    { length: DOCUMENT_LIMITS.relationships + 1 },
+    () => ({}),
+  );
+  assert.ok(
+    validateDocument(tooManyRelationships).errors.some((error) =>
+      error.includes(`at most ${DOCUMENT_LIMITS.relationships} entries`)),
+  );
+
+  const fullDocument = emptyDocument();
+  fullDocument.people = Array.from(
+    { length: DOCUMENT_LIMITS.people },
+    (_, index) => ({ id: `person-${index}`, name: `人物${index}` }),
+  );
+  assert.equal(validateDocument(fullDocument).valid, true);
+  assert.throws(
+    () => createPerson(fullDocument, { id: "overflow", name: "越界人物" }),
+    new RegExp(`at most ${DOCUMENT_LIMITS.people} entries`),
+  );
+
+  const longTitle = cloneDocument(createDemoDocument());
+  longTitle.title = "星".repeat(DOCUMENT_LIMITS.title + 1);
+  assert.ok(
+    validateDocument(longTitle).errors.some((error) => /title: must contain at most/.test(error)),
+  );
+
+  const longName = cloneDocument(createDemoDocument());
+  longName.people[0].name = "月".repeat(DOCUMENT_LIMITS.personName + 1);
+  assert.ok(
+    validateDocument(longName).errors.some((error) =>
+      /people\[0\]\.name: must contain at most/.test(error)),
+  );
+
+  const longNote = cloneDocument(createDemoDocument());
+  longNote.relationships[0].note = "光".repeat(DOCUMENT_LIMITS.relationshipNote + 1);
+  assert.ok(
+    validateDocument(longNote).errors.some((error) =>
+      /relationships\[0\]\.note: must contain at most/.test(error)),
+  );
+
+  const oversizedPayload = cloneDocument(createDemoDocument());
+  oversizedPayload.extension = "x".repeat(DOCUMENT_LIMITS.serializedCharacters);
+  assert.ok(
+    validateDocument(oversizedPayload).errors.some((error) =>
+      /document: serialized form must contain at most/.test(error)),
+  );
+});
+
+test("选中关系的粒子只运行有限时长且 reduced-motion 始终禁用粒子", () => {
+  let now = 100;
+  const edge = {
+    id: "r01",
+    source: { id: "p01" },
+    target: { id: "p02" },
+  };
+  const graph = Object.create(HeartGraph.prototype);
+  Object.assign(graph, {
+    destroyed: false,
+    motionReduced: false,
+    particleAnimationUntil: 0,
+    selection: null,
+    edgeById: new Map([[edge.id, edge]]),
+    nodeById: new Map(),
+    adjacency: new Map(),
+    pathRelationshipIds: new Set(),
+    pathNodeIds: new Set(),
+    physicsActive: false,
+    cameraAnimation: null,
+    nodes: [],
+    needsDraw: false,
+    alpha: 0,
+    stableFrames: 0,
+    now: () => now,
+    requestDraw() {
+      this.needsDraw = true;
+    },
+  });
+
+  graph.setSelection({ type: "relationship", id: edge.id });
+  assert.deepEqual(graph.activeParticleEdges(), [edge]);
+  assert.equal(graph.hasActiveAnimation(), true);
+
+  graph.needsDraw = false;
+  now += 10_000;
+  assert.deepEqual(graph.activeParticleEdges(), []);
+  assert.equal(graph.particleAnimationUntil, 0);
+  assert.equal(graph.needsDraw, true);
+  assert.equal(graph.hasActiveAnimation(), false);
+
+  graph.setSelection({ type: "relationship", id: edge.id });
+  graph.setMotionReduced(true);
+  assert.equal(graph.particleAnimationUntil, 0);
+  assert.deepEqual(graph.activeParticleEdges(), []);
+  assert.equal(graph.hasActiveAnimation(), false);
 });
 
 test("mutual 关系创建时 canonicalize，反向重复关系仍会被拒绝", () => {

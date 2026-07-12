@@ -20,6 +20,8 @@ const STORAGE_KEY = "w33d.relation.heartlines.v1";
 const THEME_KEY = "w33d.relation.theme.v1";
 const MOTION_KEY = "w33d.relation.motion.v1";
 const HISTORY_LIMIT = 40;
+const mobileMedia = window.matchMedia("(max-width: 820px)");
+const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const KIND_META = Object.freeze({
   partner: { label: "伴侣", short: "PAIR" },
@@ -120,11 +122,13 @@ const state = {
   history: [],
   layout: "constellation",
   mode: "explore",
+  motionFollowsSystem: true,
   motionReduced: false,
   path: null,
   playing: false,
   playbackTimer: null,
   selection: null,
+  searchIndex: -1,
   theme: "dark",
   view: "graph",
   year: new Date().getFullYear(),
@@ -240,10 +244,10 @@ function toast(message, tone = "info") {
   announce(message);
 }
 
-function persistDocument() {
+function persistDocument(document = state.document) {
   setSaveState("saving", "正在保存…");
   try {
-    saveDocument(state.document, {
+    saveDocument(document, {
       key: STORAGE_KEY,
       storage: window.localStorage,
     });
@@ -257,6 +261,11 @@ function persistDocument() {
 
 function commitDocument(nextDocument, message) {
   assertValidDocument(nextDocument);
+  if (!persistDocument(nextDocument)) {
+    toast("保存失败，修改未应用；请检查浏览器存储设置", "error");
+    return false;
+  }
+
   state.history.push(cloneDocument(state.document));
   if (state.history.length > HISTORY_LIMIT) state.history.shift();
   state.future = [];
@@ -266,31 +275,39 @@ function commitDocument(nextDocument, message) {
 
   const bounds = yearBounds(state.document, new Date().getFullYear());
   state.year = Math.max(bounds.min, Math.min(bounds.max, state.year));
-  persistDocument();
   renderAll({ refit: true });
   if (message) toast(message, "success");
+  return true;
 }
 
 function undo() {
-  const previous = state.history.pop();
+  const previous = state.history.at(-1);
   if (!previous) return;
+  if (!persistDocument(previous)) {
+    toast("保存失败，撤销未应用", "error");
+    return;
+  }
+  state.history.pop();
   state.future.push(cloneDocument(state.document));
   state.document = previous;
   state.selection = null;
   state.path = null;
-  persistDocument();
   renderAll({ refit: true });
   toast("已撤销上一步编辑");
 }
 
 function redo() {
-  const next = state.future.pop();
+  const next = state.future.at(-1);
   if (!next) return;
+  if (!persistDocument(next)) {
+    toast("保存失败，重做未应用", "error");
+    return;
+  }
+  state.future.pop();
   state.history.push(cloneDocument(state.document));
   state.document = next;
   state.selection = null;
   state.path = null;
-  persistDocument();
   renderAll({ refit: true });
   toast("已重做编辑");
 }
@@ -336,7 +353,7 @@ function setTheme(theme) {
   state.graph?.setSelection(state.selection, state.path?.relationshipIds ?? []);
 }
 
-function setMotionReduced(reduced) {
+function setMotionReduced(reduced, options = {}) {
   state.motionReduced = reduced;
   dom.app.dataset.motion = reduced ? "reduced" : "full";
   dom.motionToggle.setAttribute("aria-pressed", String(reduced));
@@ -344,8 +361,67 @@ function setMotionReduced(reduced) {
     "aria-label",
     reduced ? "恢复完整动效" : "减少动效",
   );
-  safeStorageSet(MOTION_KEY, reduced ? "reduced" : "full");
+  if (options.persist !== false) {
+    state.motionFollowsSystem = false;
+    safeStorageSet(MOTION_KEY, reduced ? "reduced" : "full");
+  }
   state.graph?.setMotionReduced(reduced);
+}
+
+const controlRail = window.document.querySelector(".control-rail");
+const inspectorPanel = window.document.querySelector(".inspector");
+const mobileButtons = [...window.document.querySelectorAll("[data-mobile-action]")];
+
+function buttonsForPanel(panel) {
+  const actions = panel === controlRail
+    ? new Set(["controls", "search", "path"])
+    : new Set(["selection"]);
+  return mobileButtons.filter((button) => actions.has(button.dataset.mobileAction));
+}
+
+function setMobilePanel(panel, open) {
+  if (!panel) return;
+  const mobile = mobileMedia.matches;
+  const expanded = mobile && Boolean(open);
+  panel.classList.toggle("is-mobile-open", expanded);
+  panel.inert = mobile && !expanded;
+  if (mobile) panel.setAttribute("aria-hidden", String(!expanded));
+  else panel.removeAttribute("aria-hidden");
+  for (const button of buttonsForPanel(panel)) {
+    button.setAttribute("aria-expanded", String(expanded));
+  }
+}
+
+function openMobilePanel(panel, focusTarget = null) {
+  if (!mobileMedia.matches) {
+    focusTarget?.focus();
+    return;
+  }
+  const other = panel === controlRail ? inspectorPanel : controlRail;
+  setMobilePanel(other, false);
+  setMobilePanel(panel, true);
+  if (focusTarget) window.requestAnimationFrame(() => focusTarget.focus());
+}
+
+function syncMobilePanels() {
+  if (!mobileMedia.matches) {
+    setMobilePanel(controlRail, false);
+    setMobilePanel(inspectorPanel, false);
+    return;
+  }
+  setMobilePanel(controlRail, controlRail?.classList.contains("is-mobile-open"));
+  setMobilePanel(inspectorPanel, inspectorPanel?.classList.contains("is-mobile-open"));
+}
+
+function closeMobilePanels() {
+  if (!mobileMedia.matches) return false;
+  const hadOpenPanel = Boolean(
+    controlRail?.classList.contains("is-mobile-open")
+    || inspectorPanel?.classList.contains("is-mobile-open"),
+  );
+  setMobilePanel(controlRail, false);
+  setMobilePanel(inspectorPanel, false);
+  return hadOpenPanel;
 }
 
 function setSelection(selection, options = {}) {
@@ -353,6 +429,7 @@ function setSelection(selection, options = {}) {
   state.graph.setSelection(selection, state.path?.relationshipIds ?? []);
   renderInspector();
   renderEntityLists();
+  if (selection && mobileMedia.matches) openMobilePanel(inspectorPanel);
 
   if (selection?.type === "person" && options.focus !== false) {
     state.graph.focusPerson(selection.id);
@@ -670,13 +747,42 @@ function renderAll(options = {}) {
 }
 
 function closeSearch() {
+  state.searchIndex = -1;
   dom.searchResults.hidden = true;
   dom.searchInput.setAttribute("aria-expanded", "false");
+  dom.searchInput.removeAttribute("aria-activedescendant");
+}
+
+function searchOptions() {
+  return [...dom.searchResults.querySelectorAll('[role="option"]')];
+}
+
+function setActiveSearchOption(index) {
+  const options = searchOptions();
+  if (!options.length) return;
+  state.searchIndex = (index + options.length) % options.length;
+  options.forEach((option, optionIndex) => {
+    const active = optionIndex === state.searchIndex;
+    option.setAttribute("aria-selected", String(active));
+    option.classList.toggle("is-active", active);
+  });
+  const active = options[state.searchIndex];
+  dom.searchInput.setAttribute("aria-activedescendant", active.id);
+  active.scrollIntoView({ block: "nearest" });
+}
+
+function chooseSearchPerson(personId) {
+  if (!personId) return;
+  setSelection({ type: "person", id: personId });
+  dom.searchInput.value = "";
+  closeSearch();
 }
 
 function renderSearch() {
   const query = dom.searchInput.value.normalize("NFKC").trim().toLocaleLowerCase("zh-CN");
   dom.searchResults.replaceChildren();
+  state.searchIndex = -1;
+  dom.searchInput.removeAttribute("aria-activedescendant");
   if (!query) {
     closeSearch();
     return;
@@ -695,12 +801,17 @@ function renderSearch() {
       element("p", { className: "search-results__empty", text: "没有找到这颗星。" }),
     );
   } else {
-    for (const person of matches) {
+    for (const [index, person] of matches.entries()) {
       const button = element("button", {
         className: "search-result",
         type: "button",
         dataset: { personId: person.id },
-        attributes: { role: "option" },
+        attributes: {
+          "aria-selected": "false",
+          id: `search-option-${index}`,
+          role: "option",
+          tabindex: "-1",
+        },
       });
       button.append(
         element("span", { className: "search-result__avatar", text: person.emoji || person.name[0] }),
@@ -872,8 +983,9 @@ function submitPerson(event) {
         visibility: dom.personVisibility.value,
       });
     }
-    dom.personDialog.close();
-    commitDocument(next, editingId ? "人物已更新" : "人物已加入星图");
+    if (commitDocument(next, editingId ? "人物已更新" : "人物已加入星图")) {
+      dom.personDialog.close();
+    }
   } catch (error) {
     toast(error.errors?.[0] ?? "人物信息未通过校验", "error");
   }
@@ -915,8 +1027,9 @@ function submitRelationship(event) {
     } else {
       next = createRelationship(state.document, input);
     }
-    dom.relationshipDialog.close();
-    commitDocument(next, editingId ? "关系已更新" : "新的心轨已连接");
+    if (commitDocument(next, editingId ? "关系已更新" : "新的心轨已连接")) {
+      dom.relationshipDialog.close();
+    }
   } catch (error) {
     toast(error.errors?.[0] ?? "关系信息未通过校验", "error");
   }
@@ -1059,7 +1172,17 @@ function bindEvents() {
 
   dom.searchInput.addEventListener("input", renderSearch);
   dom.searchInput.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+    const options = searchOptions();
+    if (event.key === "ArrowDown" && options.length) {
+      event.preventDefault();
+      setActiveSearchOption(state.searchIndex + 1);
+    } else if (event.key === "ArrowUp" && options.length) {
+      event.preventDefault();
+      setActiveSearchOption(state.searchIndex < 0 ? options.length - 1 : state.searchIndex - 1);
+    } else if (event.key === "Enter" && state.searchIndex >= 0) {
+      event.preventDefault();
+      chooseSearchPerson(options[state.searchIndex]?.dataset.personId);
+    } else if (event.key === "Escape") {
       dom.searchInput.value = "";
       closeSearch();
     }
@@ -1067,9 +1190,7 @@ function bindEvents() {
   dom.searchResults.addEventListener("click", (event) => {
     const button = event.target.closest("[data-person-id]");
     if (!button) return;
-    setSelection({ type: "person", id: button.dataset.personId });
-    dom.searchInput.value = "";
-    closeSearch();
+    chooseSearchPerson(button.dataset.personId);
   });
 
   window.document.addEventListener("pointerdown", (event) => {
@@ -1184,7 +1305,7 @@ function bindEvents() {
     const editing = event.target.matches("input, textarea, select") || event.target.isContentEditable;
     if (event.key === "/" && !editing) {
       event.preventDefault();
-      dom.searchInput.focus();
+      openMobilePanel(controlRail, dom.searchInput);
     } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) redo();
@@ -1202,7 +1323,12 @@ function bindEvents() {
       );
     } else if (!editing && (event.key === "Delete" || event.key === "Backspace")) {
       deleteSelection();
-    } else if (event.key === "Escape" && !dom.personDialog.open && !dom.relationshipDialog.open) {
+    } else if (
+      event.key === "Escape"
+      && !dom.personDialog.open
+      && !dom.relationshipDialog.open
+      && !closeMobilePanels()
+    ) {
       state.selection = null;
       clearPath();
       renderInspector();
@@ -1213,21 +1339,28 @@ function bindEvents() {
     button.addEventListener("click", () => {
       const action = button.dataset.mobileAction;
       if (action === "search") {
-        dom.searchInput.focus();
+        openMobilePanel(controlRail, dom.searchInput);
       } else if (action === "add") {
         openPersonDialog();
       } else if (action === "path") {
-        dom.pathSource.focus();
+        openMobilePanel(controlRail, dom.pathSource);
       } else if (action === "controls") {
-        window.document.querySelector(".control-rail")?.classList.toggle("is-mobile-open");
+        const open = !controlRail?.classList.contains("is-mobile-open");
+        if (open) openMobilePanel(controlRail);
+        else setMobilePanel(controlRail, false);
       } else if (action === "selection") {
-        window.document.querySelector(".inspector")?.classList.toggle("is-mobile-open");
+        const open = !inspectorPanel?.classList.contains("is-mobile-open");
+        if (open) openMobilePanel(inspectorPanel);
+        else setMobilePanel(inspectorPanel, false);
       }
     });
   }
 
-  window.addEventListener("online", () => setSaveState("saved", "已保存到此设备"));
-  window.addEventListener("offline", () => setSaveState("offline", "离线 · 编辑仍保存在本机"));
+  const handleMobileChange = () => syncMobilePanels();
+  mobileMedia.addEventListener?.("change", handleMobileChange);
+  motionMedia.addEventListener?.("change", (event) => {
+    if (state.motionFollowsSystem) setMotionReduced(event.matches, { persist: false });
+  });
   window.document.addEventListener("visibilitychange", () => {
     if (window.document.hidden) stopTimeline();
   });
@@ -1250,20 +1383,26 @@ function boot() {
   state.year = bounds.max;
   state.theme = safeStorageGet(THEME_KEY) === "light" ? "light" : "dark";
   const savedMotion = safeStorageGet(MOTION_KEY);
-  state.motionReduced = savedMotion
-    ? savedMotion === "reduced"
-    : window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  state.motionFollowsSystem = savedMotion === null;
+  state.motionReduced = state.motionFollowsSystem
+    ? motionMedia.matches
+    : savedMotion === "reduced";
 
   state.graph = new HeartGraph(dom.relationCanvas, {
     onSelect: (selection) => setSelection(selection, { focus: false }),
   });
   state.graph.setMotionReduced(state.motionReduced);
   bindEvents();
+  syncMobilePanels();
   setMode("explore");
   setTheme(state.theme);
-  setMotionReduced(state.motionReduced);
+  setMotionReduced(state.motionReduced, { persist: false });
   renderAll({ refit: true });
   setPathSummary();
+
+  if (!persistDocument(state.document)) {
+    loadWarning = "浏览器存储不可用；为避免丢失，编辑功能会保持事务性关闭";
+  }
 
   if (window.matchMedia("(forced-colors: active)").matches) setView("list");
   else setView("graph");

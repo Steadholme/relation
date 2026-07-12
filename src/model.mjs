@@ -6,6 +6,25 @@ const MIN_YEAR = 1;
 const MAX_YEAR = 9999;
 
 /**
+ * 本地关系文档的硬边界。规模上限同时保护 localStorage、导入校验与
+ * Canvas 的 O(n²) 布局；字符串上限按 JavaScript UTF-16 code unit 计数。
+ */
+export const DOCUMENT_LIMITS = Object.freeze({
+  serializedCharacters: 1_000_000,
+  people: 300,
+  relationships: 1_200,
+  documentId: 128,
+  title: 120,
+  description: 500,
+  dataPolicy: 80,
+  entityId: 128,
+  personName: 80,
+  personColor: 32,
+  personEmoji: 16,
+  relationshipNote: 500,
+});
+
+/**
  * 关系类型是稳定的存储值；UI 文案应在展示层本地化。
  */
 export const RELATION_KINDS = Object.freeze([
@@ -312,6 +331,45 @@ export function validateDocument(document) {
     return { valid: false, errors };
   }
 
+  if (document.people.length > DOCUMENT_LIMITS.people) {
+    addError("people", `must contain at most ${DOCUMENT_LIMITS.people} entries`);
+  }
+  if (document.relationships.length > DOCUMENT_LIMITS.relationships) {
+    addError(
+      "relationships",
+      `must contain at most ${DOCUMENT_LIMITS.relationships} entries`,
+    );
+  }
+  if (errors.length > 0) return { valid: false, errors };
+
+  try {
+    const serialized = JSON.stringify(document);
+    if (serialized.length > DOCUMENT_LIMITS.serializedCharacters) {
+      addError(
+        "document",
+        `serialized form must contain at most ${DOCUMENT_LIMITS.serializedCharacters} characters`,
+      );
+      return { valid: false, errors };
+    }
+  } catch {
+    return { valid: false, errors: ["document: must be JSON serializable"] };
+  }
+
+  const documentStringLimits = [
+    ["id", DOCUMENT_LIMITS.documentId],
+    ["title", DOCUMENT_LIMITS.title],
+    ["description", DOCUMENT_LIMITS.description],
+    ["dataPolicy", DOCUMENT_LIMITS.dataPolicy],
+  ];
+  for (const [field, maxLength] of documentStringLimits) {
+    if (!Object.hasOwn(document, field)) continue;
+    if (typeof document[field] !== "string") {
+      addError(field, "must be a string");
+    } else if (document[field].length > maxLength) {
+      addError(field, `must contain at most ${maxLength} characters`);
+    }
+  }
+
   const globalIds = new Map();
   const normalizedNames = new Map();
   const personIds = new Set();
@@ -329,6 +387,12 @@ export function validateDocument(document) {
       if (person.id !== person.id.trim()) {
         addError(`${path}.id`, "must not contain surrounding whitespace");
       }
+      if (person.id.length > DOCUMENT_LIMITS.entityId) {
+        addError(
+          `${path}.id`,
+          `must contain at most ${DOCUMENT_LIMITS.entityId} characters`,
+        );
+      }
       if (globalIds.has(person.id)) {
         addError(`${path}.id`, `duplicate ID \"${person.id}\"`);
       } else {
@@ -343,6 +407,12 @@ export function validateDocument(document) {
       if (person.name !== person.name.trim()) {
         addError(`${path}.name`, "must not contain surrounding whitespace");
       }
+      if (person.name.length > DOCUMENT_LIMITS.personName) {
+        addError(
+          `${path}.name`,
+          `must contain at most ${DOCUMENT_LIMITS.personName} characters`,
+        );
+      }
       const nameKey = normalizedName(person.name);
       if (normalizedNames.has(nameKey)) {
         addError(`${path}.name`, `duplicate name \"${person.name}\"`);
@@ -353,6 +423,18 @@ export function validateDocument(document) {
 
     if (Object.hasOwn(person, "gender") || Object.hasOwn(person, "sex")) {
       addError(path, "gender and sex fields are not part of this model");
+    }
+
+    for (const [field, maxLength] of [
+      ["color", DOCUMENT_LIMITS.personColor],
+      ["emoji", DOCUMENT_LIMITS.personEmoji],
+    ]) {
+      if (!Object.hasOwn(person, field)) continue;
+      if (typeof person[field] !== "string") {
+        addError(`${path}.${field}`, "must be a string");
+      } else if (person[field].length > maxLength) {
+        addError(`${path}.${field}`, `must contain at most ${maxLength} characters`);
+      }
     }
   }
 
@@ -370,6 +452,12 @@ export function validateDocument(document) {
     } else {
       if (relationship.id !== relationship.id.trim()) {
         addError(`${path}.id`, "must not contain surrounding whitespace");
+      }
+      if (relationship.id.length > DOCUMENT_LIMITS.entityId) {
+        addError(
+          `${path}.id`,
+          `must contain at most ${DOCUMENT_LIMITS.entityId} characters`,
+        );
       }
       if (globalIds.has(relationship.id)) {
         addError(`${path}.id`, `duplicate ID \"${relationship.id}\"`);
@@ -393,8 +481,16 @@ export function validateDocument(document) {
       const value = relationship[endpoint];
       if (typeof value !== "string" || value.trim() === "") {
         addError(`${path}.${endpoint}`, "must be a non-empty string");
-      } else if (!personIds.has(value)) {
-        addError(`${path}.${endpoint}`, `references missing person \"${value}\"`);
+      } else {
+        if (value.length > DOCUMENT_LIMITS.entityId) {
+          addError(
+            `${path}.${endpoint}`,
+            `must contain at most ${DOCUMENT_LIMITS.entityId} characters`,
+          );
+        }
+        if (!personIds.has(value)) {
+          addError(`${path}.${endpoint}`, `references missing person \"${value}\"`);
+        }
       }
     }
 
@@ -449,6 +545,11 @@ export function validateDocument(document) {
 
     if (typeof relationship.note !== "string") {
       addError(`${path}.note`, "must be a string");
+    } else if (relationship.note.length > DOCUMENT_LIMITS.relationshipNote) {
+      addError(
+        `${path}.note`,
+        `must contain at most ${DOCUMENT_LIMITS.relationshipNote} characters`,
+      );
     }
 
     if (!RELATION_VISIBILITIES.has(relationship.visibility)) {

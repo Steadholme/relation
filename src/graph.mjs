@@ -2,6 +2,7 @@ const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const MIN_SCALE = 0.28;
 const MAX_SCALE = 4.5;
+const PARTICLE_ANIMATION_DURATION_MS = 2_400;
 
 const PALETTE = [
   "#ff5c9a",
@@ -195,6 +196,7 @@ export class HeartGraph {
     this.physicsActive = false;
     this.stableFrames = 0;
     this.motionReduced = false;
+    this.particleAnimationUntil = 0;
 
     this.width = 1;
     this.height = 1;
@@ -368,6 +370,9 @@ export class HeartGraph {
     if (this.destroyed) return;
     this.selection = this.normalizeSelection(selection);
     this.setPathRelationshipIds(pathRelationshipIds);
+    this.particleAnimationUntil = this.selection && !this.motionReduced
+      ? this.now() + PARTICLE_ANIMATION_DURATION_MS
+      : 0;
     this.requestDraw();
   }
 
@@ -390,6 +395,9 @@ export class HeartGraph {
     if (next === this.motionReduced) return;
     this.motionReduced = next;
     this.cameraAnimation = null;
+    this.particleAnimationUntil = next || !this.selection
+      ? 0
+      : this.now() + PARTICLE_ANIMATION_DURATION_MS;
 
     if (next) {
       this.settleReducedMotion();
@@ -875,8 +883,16 @@ export class HeartGraph {
     return { selected, adjacent, path, hovered, muted };
   }
 
-  activeParticleEdges() {
-    if (this.motionReduced || !this.selection) return [];
+  activeParticleEdges(timestamp = this.now()) {
+    if (this.motionReduced || !this.selection || this.particleAnimationUntil <= 0) {
+      return [];
+    }
+    if (timestamp >= this.particleAnimationUntil) {
+      this.particleAnimationUntil = 0;
+      // 清掉上一帧已经绘制在 Canvas 上的粒子，但不再维持 RAF 循环。
+      this.needsDraw = true;
+      return [];
+    }
     if (this.selection.type === "relationship") {
       const edge = this.edgeById.get(this.selection.id);
       return edge ? [edge] : [];
@@ -887,10 +903,10 @@ export class HeartGraph {
     return [];
   }
 
-  hasActiveAnimation() {
+  hasActiveAnimation(timestamp = this.now()) {
     return this.physicsActive
       || Boolean(this.cameraAnimation)
-      || this.activeParticleEdges().length > 0;
+      || this.activeParticleEdges(timestamp).length > 0;
   }
 
   draw(timestamp = this.now()) {
@@ -1104,7 +1120,7 @@ export class HeartGraph {
   }
 
   drawParticles(context, timestamp) {
-    const edges = this.activeParticleEdges();
+    const edges = this.activeParticleEdges(timestamp);
     if (!edges.length) return;
 
     const scale = this.view.scale;
@@ -1274,12 +1290,13 @@ export class HeartGraph {
     if (this.physicsActive) this.stepPhysics(dt);
     if (this.cameraAnimation) this.advanceCamera(timestamp);
 
-    if (this.needsDraw || this.hasActiveAnimation()) {
+    const activeAnimation = this.hasActiveAnimation(timestamp);
+    if (this.needsDraw || activeAnimation) {
       this.needsDraw = false;
       this.draw(timestamp);
     }
 
-    if (this.hasActiveAnimation() || this.needsDraw) this.scheduleFrame();
+    if (this.hasActiveAnimation(timestamp) || this.needsDraw) this.scheduleFrame();
   }
 
   advanceCamera(timestamp) {

@@ -3,14 +3,12 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createAppServer } from "../server.mjs";
 
-const targetUrl = process.argv.find((argument) => argument.startsWith("--url="))?.slice(6);
+let targetUrl = process.argv.find((argument) => argument.startsWith("--url="))?.slice(6);
 const outputDirectory = process.argv.find((argument) => argument.startsWith("--out="))?.slice(6);
 const chromium = process.env.CHROMIUM_BIN || "/usr/bin/chromium";
-
-if (!targetUrl) {
-  throw new Error("usage: node tools/browser-smoke.mjs --url=<url> [--out=<directory>]");
-}
+let localServer;
 
 const viewports = [
   { name: "mobile", width: 390, height: 844 },
@@ -156,6 +154,14 @@ async function smoke(viewport) {
         screenWidth: viewport.width,
         width: viewport.width,
       }),
+      cdp.send("Emulation.setEmulatedMedia", {
+        features: [
+          {
+            name: "prefers-reduced-motion",
+            value: viewport.name === "mobile" ? "reduce" : "no-preference",
+          },
+        ],
+      }),
     ]);
 
     await cdp.send("Page.navigate", { url: targetUrl });
@@ -182,6 +188,7 @@ async function smoke(viewport) {
           graphHeight: Math.round(graph.height),
           graphLoadingHidden: document.getElementById("graphLoading").hidden,
           graphWidth: Math.round(graph.width),
+          motion: app.dataset.motion,
           people: Number(document.getElementById("peopleMetric").textContent),
           relations: Number(document.getElementById("relationsMetric").textContent),
           title: document.title,
@@ -194,6 +201,11 @@ async function smoke(viewport) {
     assert.equal(result.boot, "ready");
     assert.equal(result.foundation, "1.0.0");
     assert.equal(result.graphLoadingHidden, true);
+    assert.equal(
+      result.motion,
+      viewport.name === "mobile" ? "reduced" : "full",
+      "the initial motion setting should follow the emulated operating-system preference",
+    );
     assert.ok(result.people >= 8);
     assert.ok(result.relations >= 1);
     assert.ok(result.graphWidth >= 280, `graph width ${result.graphWidth}`);
@@ -225,6 +237,94 @@ async function smoke(viewport) {
     assert.equal(interactions.result.value.dialogOpen, true);
     assert.equal(interactions.result.value.mode, "studio");
 
+    let mobileDock;
+    if (viewport.name === "mobile") {
+      mobileDock = await cdp.send("Runtime.evaluate", {
+        expression: `(async () => {
+          const rail = document.querySelector(".control-rail");
+          const controls = document.querySelector('[data-mobile-action="controls"]');
+          const search = document.querySelector('[data-mobile-action="search"]');
+          const initiallyInert = rail.inert;
+          const initiallyHidden = rail.getAttribute("aria-hidden") === "true";
+
+          controls.click();
+          await new Promise((resolve) => setTimeout(resolve, 320));
+          const openedByControls = !rail.inert
+            && rail.getAttribute("aria-hidden") !== "true"
+            && (rail.classList.contains("is-mobile-open")
+              || document.getElementById("app").classList.contains("is-rail-open"));
+
+          controls.click();
+          await new Promise((resolve) => setTimeout(resolve, 320));
+          const closedAfterToggle = rail.inert && rail.getAttribute("aria-hidden") === "true";
+
+          search.click();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          const openedBySearch = !rail.inert
+            && rail.getAttribute("aria-hidden") !== "true"
+            && document.activeElement === document.getElementById("searchInput");
+
+          return {
+            closedAfterToggle,
+            initiallyHidden,
+            initiallyInert,
+            openedByControls,
+            openedBySearch,
+          };
+        })()`,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      assert.deepEqual(mobileDock.result.value, {
+        closedAfterToggle: true,
+        initiallyHidden: true,
+        initiallyInert: true,
+        openedByControls: true,
+        openedBySearch: true,
+      });
+    }
+
+    const storageFailure = await cdp.send("Runtime.evaluate", {
+      expression: `(async () => {
+        const beforePeople = Number(document.getElementById("peopleMetric").textContent);
+        const originalSetItem = Storage.prototype.setItem;
+        Object.defineProperty(Storage.prototype, "setItem", {
+          configurable: true,
+          value() {
+            throw new DOMException("Synthetic quota failure", "QuotaExceededError");
+          },
+        });
+
+        try {
+          document.getElementById("addPersonButton").click();
+          document.getElementById("personName").value = "存储失败测试";
+          document.getElementById("personForm").requestSubmit();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return {
+            afterPeople: Number(document.getElementById("peopleMetric").textContent),
+            beforePeople,
+            saveState: document.getElementById("saveStatus").dataset.state,
+          };
+        } finally {
+          Object.defineProperty(Storage.prototype, "setItem", {
+            configurable: true,
+            value: originalSetItem,
+          });
+          if (document.getElementById("personDialog").open) {
+            document.getElementById("personDialog").close();
+          }
+        }
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    assert.equal(
+      storageFailure.result.value.afterPeople,
+      storageFailure.result.value.beforePeople,
+      "a person edit must not be applied when local persistence fails",
+    );
+    assert.equal(storageFailure.result.value.saveState, "error");
+
     if (outputDirectory) {
       const screenshot = await cdp.send("Page.captureScreenshot", {
         captureBeyondViewport: false,
@@ -240,7 +340,13 @@ async function smoke(viewport) {
     assert.deepEqual(responses, [], `HTTP errors: ${responses.join(", ")}`);
     assert.deepEqual(failedRequests, [], `failed requests: ${failedRequests.join(", ")}`);
     assert.deepEqual(errors, [], `browser errors: ${errors.join(" | ")}`);
-    return { ...result, interactions: interactions.result.value, viewport: viewport.name };
+    return {
+      ...result,
+      interactions: interactions.result.value,
+      mobileDock: mobileDock?.result.value,
+      storageFailure: storageFailure.result.value,
+      viewport: viewport.name,
+    };
   } finally {
     cdp?.close();
     chrome.kill("SIGTERM");
@@ -253,12 +359,32 @@ async function smoke(viewport) {
   }
 }
 
-if (outputDirectory) {
-  await import("node:fs/promises").then(({ mkdir }) => mkdir(outputDirectory, { recursive: true }));
-}
+try {
+  if (!targetUrl) {
+    localServer = createAppServer();
+    await new Promise((resolve, reject) => {
+      localServer.once("error", reject);
+      localServer.listen(0, "127.0.0.1", resolve);
+    });
+    const address = localServer.address();
+    assert.ok(address && typeof address === "object");
+    targetUrl = `http://127.0.0.1:${address.port}`;
+  }
 
-const results = [];
-for (const viewport of viewports) {
-  results.push(await smoke(viewport));
+  if (outputDirectory) {
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(outputDirectory, { recursive: true }));
+  }
+
+  const results = [];
+  for (const viewport of viewports) {
+    results.push(await smoke(viewport));
+  }
+  process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
+} finally {
+  if (localServer) {
+    localServer.closeAllConnections();
+    await new Promise((resolve, reject) => {
+      localServer.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 }
-process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);

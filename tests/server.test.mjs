@@ -46,6 +46,7 @@ test("supports HEAD and validators", async () => {
   const first = await fetch(`${origin}/styles.css`);
   const etag = first.headers.get("etag");
   assert.ok(etag);
+  assert.equal(first.headers.get("cache-control"), "no-cache");
 
   const head = await fetch(`${origin}/styles.css`, { method: "HEAD" });
   assert.equal(head.status, 200);
@@ -58,7 +59,7 @@ test("supports HEAD and validators", async () => {
 });
 
 test("pins the vendored Foundation snapshot as immutable", async () => {
-  const response = await fetch(`${origin}/vendor/odyssey-foundation.css`);
+  const response = await fetch(`${origin}/vendor/odyssey-foundation-1.0.css`);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "public, max-age=31536000, immutable");
   assert.match(await response.text(), /--ody-foundation-version:\"1\.0\.0\"/);

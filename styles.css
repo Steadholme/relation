@@ -1867,6 +1867,13 @@ body {
   white-space: nowrap;
 }
 
+.search-result.is-active,
+.search-result[aria-selected="true"] {
+  color: var(--rel-ink);
+  background: var(--rel-panel-3);
+  box-shadow: inset 2px 0 0 var(--rel-accent);
+}
+
 .search-results__empty {
   margin: 0;
   padding: 16px 10px;
@@ -1999,11 +2006,18 @@ body {
   }
 
   .brand__copy,
-  .save-status,
   #undoButton,
   #redoButton,
   .topbar__divider {
     display: none;
+  }
+
+  .save-status[data-state="error"] {
+    max-width: 112px;
+    color: var(--rel-danger);
+    font-size: 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .mode-switch {
