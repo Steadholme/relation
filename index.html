@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111614">
+  <meta name="description" content="Heartlines 心轨，用动态星图探索、编辑与回放关系脉络。">
+  <title>Heartlines · 心轨</title>
+  <link rel="icon" href="/assets/heartlines.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/vendor/odyssey-foundation.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer type="module" src="/src/app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#relationWorkspace">跳到关系图工作区</a>
+
+  <div id="app" class="rel-app" data-ody-foundation data-theme="dark" data-mode="explore">
+    <header class="topbar" aria-label="应用工具栏">
+      <button id="brandButton" class="brand" type="button" aria-label="Heartlines 心轨，打开图谱概览">
+        <img class="brand__mark" src="/assets/heartlines.svg" alt="" width="42" height="42">
+        <span class="brand__copy">
+          <span class="brand__eyebrow">RELATION / 001</span>
+          <span class="brand__name">Heartlines <span>心轨</span></span>
+        </span>
+      </button>
+
+      <div class="mode-switch" role="group" aria-label="工作模式">
+        <button id="modeExplore" class="mode-switch__button is-active" type="button" aria-pressed="true">
+          <span class="mode-switch__icon" aria-hidden="true">◎</span><span class="mode-switch__label">探索</span>
+        </button>
+        <button id="modeStudio" class="mode-switch__button" type="button" aria-pressed="false">
+          <span class="mode-switch__icon" aria-hidden="true">✦</span><span class="mode-switch__label">编辑</span>
+        </button>
+      </div>
+
+      <div id="saveStatus" class="save-status" data-state="saved" role="status" aria-live="polite">
+        <span class="save-status__signal" aria-hidden="true"></span>
+        <span id="saveStatusText">已保存到此设备</span>
+      </div>
+
+      <div class="topbar__actions">
+        <button id="undoButton" class="icon-button" type="button" aria-label="撤销" title="撤销" disabled>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 8 5 12l4 4"/><path d="M5 12h8a6 6 0 0 1 6 6"/></svg>
+        </button>
+        <button id="redoButton" class="icon-button" type="button" aria-label="重做" title="重做" disabled>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 8 4 4-4 4"/><path d="M19 12h-8a6 6 0 0 0-6 6"/></svg>
+        </button>
+        <span class="topbar__divider" aria-hidden="true"></span>
+        <button id="motionToggle" class="icon-button" type="button" aria-label="减少动效" title="减少动效" aria-pressed="false">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h4l2-6 4 12 2-6h4"/></svg>
+        </button>
+        <button id="themeToggle" class="icon-button" type="button" aria-label="切换明暗主题" title="切换明暗主题" aria-pressed="true">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 15.4A8 8 0 0 1 8.6 4 8 8 0 1 0 20 15.4Z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="relationWorkspace" class="workspace">
+      <aside class="control-rail" aria-label="图谱控制台">
+        <div class="rail__header">
+          <div>
+            <p class="coordinate-label">FIELD CONTROLS</p>
+            <h1>关系观测站</h1>
+          </div>
+          <span class="live-chip"><span aria-hidden="true"></span> 实时力场</span>
+        </div>
+
+        <section class="rail-section rail-section--search" aria-labelledby="searchHeading">
+          <div class="section-heading">
+            <h2 id="searchHeading">查找人物</h2>
+            <kbd>/</kbd>
+          </div>
+          <div class="search-field">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+            <input id="searchInput" type="search" autocomplete="off" placeholder="输入名字或别名…" aria-label="搜索人物" aria-controls="searchResults" aria-expanded="false">
+          </div>
+          <div id="searchResults" class="search-results" role="listbox" aria-label="人物搜索结果" hidden></div>
+        </section>
+
+        <section class="rail-section" aria-labelledby="overviewHeading">
+          <div class="section-heading">
+            <h2 id="overviewHeading">图谱概览</h2>
+            <span class="section-heading__meta">LOCAL</span>
+          </div>
+          <div class="metric-grid">
+            <article class="metric">
+              <strong id="peopleMetric">0</strong>
+              <span>人物</span>
+            </article>
+            <article class="metric">
+              <strong id="relationsMetric">0</strong>
+              <span>关系</span>
+            </article>
+            <article class="metric">
+              <strong id="componentsMetric">0</strong>
+              <span>星群</span>
+            </article>
+            <article class="metric metric--temperature">
+              <strong id="temperatureMetric">0.00</strong>
+              <span>力场温度</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="rail-section" aria-labelledby="filterHeading">
+          <div class="section-heading">
+            <h2 id="filterHeading">关系频段</h2>
+            <span class="section-heading__meta">FILTER</span>
+          </div>
+          <div class="filter-stack" role="group" aria-label="按关系类型过滤">
+            <button id="allFilter" class="filter-button is-active" type="button" aria-pressed="true">
+              <span class="filter-button__swatch filter-button__swatch--all" aria-hidden="true"></span>
+              <span>全部连线</span>
+              <small>ALL</small>
+            </button>
+            <button class="filter-button" type="button" data-kind="partner" aria-pressed="false">
+              <span class="filter-button__swatch filter-button__swatch--partner" aria-hidden="true"></span>
+              <span>伴侣</span>
+              <small>PAIR</small>
+            </button>
+            <button class="filter-button" type="button" data-kind="dated" aria-pressed="false">
+              <span class="filter-button__swatch filter-button__swatch--dated" aria-hidden="true"></span>
+              <span>曾经交往</span>
+              <small>PAST</small>
+            </button>
+            <button class="filter-button" type="button" data-kind="affection" aria-pressed="false">
+              <span class="filter-button__swatch filter-button__swatch--affection" aria-hidden="true"></span>
+              <span>心动</span>
+              <small>PULSE</small>
+            </button>
+            <button class="filter-button" type="button" data-kind="spark" aria-pressed="false">
+              <span class="filter-button__swatch filter-button__swatch--spark" aria-hidden="true"></span>
+              <span>火花</span>
+              <small>SPARK</small>
+            </button>
+          </div>
+        </section>
+
+        <section class="rail-section" aria-labelledby="layoutHeading">
+          <div class="section-heading">
+            <h2 id="layoutHeading">引力模型</h2>
+            <span class="section-heading__meta">LAYOUT</span>
+          </div>
+          <div class="segmented-control" role="group" aria-label="选择图谱布局">
+            <button class="is-active" type="button" data-layout="constellation" aria-pressed="true">星群</button>
+            <button type="button" data-layout="heart" aria-pressed="false">心形</button>
+            <button type="button" data-layout="orbit" aria-pressed="false">轨道</button>
+          </div>
+        </section>
+
+        <section class="rail-section" aria-labelledby="pathHeading">
+          <div class="section-heading">
+            <h2 id="pathHeading">关系路径</h2>
+            <span class="section-heading__meta">A → B</span>
+          </div>
+          <div class="path-fields">
+            <label for="pathSource">起点</label>
+            <select id="pathSource">
+              <option value="">选择起点人物</option>
+            </select>
+            <span class="path-fields__line" aria-hidden="true"></span>
+            <label for="pathTarget">终点</label>
+            <select id="pathTarget">
+              <option value="">选择终点人物</option>
+            </select>
+          </div>
+          <div class="button-row">
+            <button id="findPathButton" class="button button--primary" type="button">点亮路径</button>
+            <button id="clearPathButton" class="button button--quiet" type="button">清除</button>
+          </div>
+          <p id="pathSummary" class="path-summary" aria-live="polite">选择两个人物，查看关系如何相连。</p>
+        </section>
+
+        <section class="rail-section rail-section--studio" aria-labelledby="studioHeading">
+          <div class="section-heading">
+            <h2 id="studioHeading">本地编辑</h2>
+            <span class="privacy-chip">仅此设备</span>
+          </div>
+          <div class="studio-actions">
+            <button id="addPersonButton" class="button button--primary" type="button">
+              <span aria-hidden="true">＋</span> 添加人物
+            </button>
+            <button id="addRelationshipButton" class="button button--secondary" type="button">
+              <span aria-hidden="true">⌁</span> 添加关系
+            </button>
+          </div>
+        </section>
+
+        <p id="demoDisclaimer" class="demo-disclaimer">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 3.8 6.4v5.1c0 4.7 3.1 8.1 8.2 9.5 5.1-1.4 8.2-4.8 8.2-9.5V6.4L12 3Z"/><path d="M9.5 12.2 11 13.7l3.8-4"/></svg>
+          当前使用合成演示数据。请只添加你有权记录和展示的信息。
+        </p>
+      </aside>
+
+      <section class="graph-stage" aria-labelledby="graphTitle">
+        <div class="graph-stage__header">
+          <div>
+            <p class="coordinate-label">LIVE RELATION FIELD</p>
+            <h2 id="graphTitle">心轨星图</h2>
+          </div>
+          <div class="view-switch" role="group" aria-label="切换图谱呈现方式">
+            <button id="graphViewButton" class="is-active" type="button" aria-pressed="true">图谱</button>
+            <button id="listViewButton" type="button" aria-pressed="false">列表</button>
+          </div>
+        </div>
+
+        <div class="graph-surface">
+          <canvas id="relationCanvas" aria-hidden="true"></canvas>
+          <div class="graph-grid" aria-hidden="true"></div>
+          <div class="coordinate coordinate--north" aria-hidden="true">N 52° / E 013°</div>
+          <div class="coordinate coordinate--scale" aria-hidden="true">SCALE 1:∞</div>
+
+          <div id="graphLoading" class="graph-loading" role="status" aria-live="polite">
+            <span class="graph-loading__orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+            <strong>正在校准引力场</strong>
+            <span>连接每一条时间线…</span>
+          </div>
+
+          <div class="graph-toolbar" role="toolbar" aria-label="图谱视口控制">
+            <button id="zoomIn" class="icon-button" type="button" aria-label="放大图谱" title="放大">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6m2 5 4 4"/></svg>
+            </button>
+            <button id="zoomOut" class="icon-button" type="button" aria-label="缩小图谱" title="缩小">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6m2 5 4 4"/></svg>
+            </button>
+            <button id="fitGraph" class="icon-button" type="button" aria-label="适应全部图谱" title="适应全部">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5m13 5h5v-5"/></svg>
+            </button>
+            <span class="graph-toolbar__divider" aria-hidden="true"></span>
+            <button id="exportPng" class="icon-button" type="button" aria-label="导出 PNG 图片" title="导出 PNG">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4"/><path d="M4 17v3h16v-3"/></svg>
+            </button>
+          </div>
+
+          <div class="field-legend" aria-label="关系线图例">
+            <span><i class="field-legend__line field-legend__line--partner"></i>伴侣</span>
+            <span><i class="field-legend__line field-legend__line--dated"></i>曾经</span>
+            <span><i class="field-legend__line field-legend__line--affection"></i>心动</span>
+          </div>
+        </div>
+
+        <section id="a11yView" class="a11y-view" aria-labelledby="a11yHeading" hidden>
+          <header class="a11y-view__header">
+            <div>
+              <p class="coordinate-label">STRUCTURED VIEW</p>
+              <h2 id="a11yHeading">关系图结构化列表</h2>
+            </div>
+            <p id="graphSummary">当前图谱正在载入。</p>
+          </header>
+          <div class="a11y-view__columns">
+            <section aria-labelledby="peopleHeading">
+              <h3 id="peopleHeading">人物</h3>
+              <ul id="peopleList" class="entity-list"></ul>
+            </section>
+            <section aria-labelledby="relationsHeading">
+              <h3 id="relationsHeading">关系</h3>
+              <ul id="relationsList" class="entity-list entity-list--relations"></ul>
+            </section>
+          </div>
+        </section>
+
+        <div class="timeline" aria-label="时间轴回放控制">
+          <button id="timelinePlay" class="timeline__play" type="button" aria-label="播放时间轴" aria-pressed="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 9 6-9 6V6Z"/></svg>
+          </button>
+          <div class="timeline__copy">
+            <span>时间切片</span>
+            <strong id="timelineYear">全部年份</strong>
+          </div>
+          <input id="timelineRange" type="range" min="0" max="100" value="100" step="1" aria-label="关系时间轴">
+          <div class="timeline__ticks" aria-hidden="true"><span>过去</span><span>现在</span></div>
+        </div>
+      </section>
+
+      <aside class="inspector" aria-labelledby="inspectorTitle">
+        <div class="inspector__handle" aria-hidden="true"></div>
+        <header class="inspector__header">
+          <p id="inspectorKicker" class="coordinate-label">SELECTION / NONE</p>
+          <h2 id="inspectorTitle">选择一颗星</h2>
+          <p>点选人物或关系，查看这条心轨的方向、时间与强度。</p>
+        </header>
+        <div id="inspectorBody" class="inspector__body">
+          <div class="selection-empty" aria-hidden="true">
+            <div class="selection-empty__orbit"><span></span></div>
+            <p>关系不是排名，而是一张仍在变化的地图。</p>
+          </div>
+        </div>
+        <footer class="inspector__footer">
+          <button id="deleteSelectionButton" class="button button--danger" type="button" disabled>删除所选</button>
+          <div class="inspector__footer-row">
+            <button id="resetDemoButton" class="button button--quiet" type="button">重置演示</button>
+            <button id="exportJsonButton" class="button button--secondary" type="button">导出 JSON</button>
+          </div>
+        </footer>
+      </aside>
+    </main>
+
+    <nav class="mobile-dock" aria-label="移动端快捷操作">
+      <button type="button" data-mobile-action="controls" aria-label="打开控制台" aria-controls="relationWorkspace">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2m4 0h10M14 4v6M6 14v6"/></svg>
+        <span>控制</span>
+      </button>
+      <button type="button" data-mobile-action="search" aria-label="搜索人物" aria-controls="searchInput">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <span>搜索</span>
+      </button>
+      <button class="mobile-dock__primary" type="button" data-mobile-action="add" aria-label="添加人物或关系">
+        <span aria-hidden="true">＋</span>
+        <small>添加</small>
+      </button>
+      <button type="button" data-mobile-action="path" aria-label="查找关系路径" aria-controls="pathSource">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="17" r="2"/><circle cx="19" cy="7" r="2"/><path d="M7 16c4-1 5-7 10-8"/></svg>
+        <span>路径</span>
+      </button>
+      <button type="button" data-mobile-action="selection" aria-label="打开所选详情" aria-controls="inspectorBody">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c.8-4 3.2-6 7-6s6.2 2 7 6"/></svg>
+        <span>详情</span>
+      </button>
+    </nav>
+
+    <dialog id="personDialog" class="dialog" aria-labelledby="personDialogTitle">
+      <form id="personForm" class="dialog__panel">
+        <header class="dialog__header">
+          <div>
+            <p class="coordinate-label">NEW CELESTIAL BODY</p>
+            <h2 id="personDialogTitle">添加人物</h2>
+          </div>
+          <button id="closePersonDialog" class="icon-button" type="button" aria-label="关闭添加人物对话框">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </header>
+        <div class="dialog__body">
+          <label class="field" for="personName">
+            <span>显示名称 <b aria-hidden="true">*</b></span>
+            <input id="personName" name="name" type="text" maxlength="80" autocomplete="off" required placeholder="例如：星河">
+            <small>可以使用昵称或化名。</small>
+          </label>
+          <div class="field-row">
+            <label class="field field--color" for="personAccent">
+              <span>星体色</span>
+              <input id="personAccent" name="accent" type="color" value="#e87352">
+            </label>
+            <label class="field" for="personVisibility">
+              <span>可见性</span>
+              <select id="personVisibility" name="visibility">
+                <option value="private">仅此设备</option>
+                <option value="public">可公开</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <footer class="dialog__footer">
+          <button class="button button--quiet" type="button" data-dialog-cancel="person">取消</button>
+          <button class="button button--primary" type="submit">添加到星图</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="relationshipDialog" class="dialog dialog--wide" aria-labelledby="relationshipDialogTitle">
+      <form id="relationshipForm" class="dialog__panel">
+        <header class="dialog__header">
+          <div>
+            <p class="coordinate-label">NEW HEARTLINE</p>
+            <h2 id="relationshipDialogTitle">添加关系</h2>
+          </div>
+          <button id="closeRelationshipDialog" class="icon-button" type="button" aria-label="关闭添加关系对话框">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </header>
+        <div class="dialog__body">
+          <div class="relationship-pair" aria-label="关系双方">
+            <label class="field" for="relationshipSource">
+              <span>起点人物</span>
+              <select id="relationshipSource" name="source" required>
+                <option value="">选择人物</option>
+              </select>
+            </label>
+            <span class="relationship-pair__link" aria-hidden="true">⌁</span>
+            <label class="field" for="relationshipTarget">
+              <span>终点人物</span>
+              <select id="relationshipTarget" name="target" required>
+                <option value="">选择人物</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-row">
+            <label class="field" for="relationshipKind">
+              <span>关系类型</span>
+              <select id="relationshipKind" name="kind">
+                <option value="partner">伴侣</option>
+                <option value="dated">曾经交往</option>
+                <option value="affection">心动</option>
+                <option value="spark">火花</option>
+              </select>
+            </label>
+            <label class="field" for="relationshipDirection">
+              <span>方向</span>
+              <select id="relationshipDirection" name="direction">
+                <option value="mutual">双向</option>
+                <option value="directed">起点 → 终点</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-row">
+            <label class="field" for="relationshipStarted">
+              <span>开始年份</span>
+              <input id="relationshipStarted" name="started" type="number" min="1900" max="2100" inputmode="numeric">
+            </label>
+            <label class="field" for="relationshipEnded">
+              <span>结束年份</span>
+              <input id="relationshipEnded" name="ended" type="number" min="1900" max="2100" inputmode="numeric">
+            </label>
+          </div>
+          <label class="field field--range" for="relationshipIntensity">
+            <span>连线强度 <output>60%</output></span>
+            <input id="relationshipIntensity" name="intensity" type="range" min="10" max="100" value="60" step="5">
+          </label>
+          <label class="field" for="relationshipNote">
+            <span>备注</span>
+            <textarea id="relationshipNote" name="note" rows="3" maxlength="400" placeholder="可选，仅记录你有权保存的信息。"></textarea>
+          </label>
+          <label class="field" for="relationshipVisibility">
+            <span>可见性</span>
+            <select id="relationshipVisibility" name="visibility">
+              <option value="private">仅此设备</option>
+              <option value="public">可公开</option>
+            </select>
+          </label>
+        </div>
+        <footer class="dialog__footer">
+          <button class="button button--quiet" type="button" data-dialog-cancel="relationship">取消</button>
+          <button class="button button--primary" type="submit">连接心轨</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+    <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  </div>
+</body>
+</html>

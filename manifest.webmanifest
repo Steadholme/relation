@@ -1,0 +1,23 @@
+{
+  "id": "/",
+  "name": "Heartlines · 心轨",
+  "short_name": "心轨",
+  "description": "用动态星图探索、编辑与回放关系脉络。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0f0d",
+  "theme_color": "#111614",
+  "categories": ["lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/assets/heartlines.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,236 @@
+/* Odyssey Foundation 1.0
+ *
+ * Framework-neutral design tokens for product-owned DOM. This file is deliberately scoped and
+ * declaration-only: no reset, component class, shell, profile, animation, JavaScript, or host
+ * element rule. Add `data-ody-foundation` to the root whose descendants should inherit tokens.
+ */
+
+:where([data-ody-foundation]) {
+  --ody-foundation-version:"1.0.0";
+
+  --ody-c-white:#ffffff;
+  --ody-c-slate-25:#f7f8fa;
+  --ody-c-slate-50:#f6f7f9;
+  --ody-c-slate-75:#f0f2f6;
+  --ody-c-slate-100:#eef0f4;
+  --ody-c-slate-200:#e5e7ec;
+  --ody-c-slate-300:#d3d7e0;
+  --ody-c-ink-900:#1a1d24;
+  --ody-c-ink-700:#4a5160;
+  --ody-c-ink-500:#727a8a;
+  --ody-c-ink-400:#9aa2b1;
+  --ody-c-paper-0:#faf9f4;
+  --ody-c-paper-25:#f5f3ec;
+  --ody-c-paper-50:#f2f0e8;
+  --ody-c-paper-75:#ece9df;
+  --ody-c-paper-100:#e9e6dc;
+  --ody-c-paper-200:#cfcabd;
+  --ody-c-paper-300:#8d887c;
+  --ody-c-basalt-900:#191c18;
+  --ody-c-basalt-700:#454b43;
+  --ody-c-basalt-500:#5f665b;
+  --ody-c-basalt-400:#6d7469;
+  --ody-c-oxide-700:#8f2f1e;
+  --ody-c-oxide-600:#b6422c;
+  --ody-c-oxide-500:#d85d3f;
+  --ody-c-oxide-100:#eac9be;
+  --ody-c-oxide-50:#f4e4de;
+  --ody-c-green-600:#16a34a;
+  --ody-c-green-50:#e6f6ec;
+  --ody-c-green-700:#15803d;
+  --ody-c-amber-600:#d97706;
+  --ody-c-amber-50:#fdf1de;
+  --ody-c-amber-700:#b45309;
+  --ody-c-rose-600:#e11d48;
+  --ody-c-rose-50:#fde7ec;
+  --ody-c-rose-700:#be123c;
+  --ody-c-cyan-600:#0891b2;
+  --ody-c-cyan-50:#e0f5f9;
+  --ody-c-cyan-700:#0e7490;
+  --ody-c-gray-400:#9aa3b5;
+
+  --ody-bg:var(--ody-c-paper-50);
+  --ody-bg-2:var(--ody-c-paper-100);
+  --ody-surface:var(--ody-c-paper-0);
+  --ody-surface-2:var(--ody-c-paper-25);
+  --ody-surface-3:var(--ody-c-paper-75);
+  --ody-border:var(--ody-c-paper-200);
+  --ody-border-2:var(--ody-c-paper-300);
+  --ody-hairline:color-mix(in srgb,var(--ody-c-paper-200) 56%,var(--ody-surface));
+  --ody-ink:var(--ody-c-basalt-900);
+  --ody-ink-2:var(--ody-c-basalt-700);
+  --ody-ink-3:var(--ody-c-basalt-500);
+  --ody-ink-4:var(--ody-c-basalt-400);
+  --ody-accent:var(--ody-c-oxide-600);
+  --ody-accent-2:var(--ody-c-oxide-500);
+  --ody-accent-ink:var(--ody-c-oxide-700);
+  --ody-accent-soft:var(--ody-c-oxide-50);
+  --ody-accent-soft-2:var(--ody-c-oxide-100);
+  --ody-ring:rgba(182,66,44,.30);
+  --ody-ok:var(--ody-c-green-600);
+  --ody-ok-soft:var(--ody-c-green-50);
+  --ody-ok-ink:var(--ody-c-green-700);
+  --ody-warn:var(--ody-c-amber-600);
+  --ody-warn-soft:var(--ody-c-amber-50);
+  --ody-warn-ink:var(--ody-c-amber-700);
+  --ody-down:var(--ody-c-rose-600);
+  --ody-down-soft:var(--ody-c-rose-50);
+  --ody-down-ink:var(--ody-c-rose-700);
+  --ody-info:var(--ody-c-cyan-600);
+  --ody-info-soft:var(--ody-c-cyan-50);
+  --ody-info-ink:var(--ody-c-cyan-700);
+  --ody-unknown:var(--ody-c-gray-400);
+  --ody-app:var(--ody-accent);
+  --ody-app-soft:var(--ody-accent-soft);
+
+  --ody-r-xs:2px;
+  --ody-r-sm:3px;
+  --ody-r:4px;
+  --ody-r-lg:7px;
+  --ody-r-pill:999px;
+  --ody-cut:8px;
+  --ody-radius:var(--ody-r);
+  --ody-radius-md:var(--ody-r-sm);
+  --ody-radius-sm:var(--ody-r-xs);
+  --ody-sh-xs:0 1px 0 rgba(25,28,24,.10);
+  --ody-sh-sm:2px 2px 0 rgba(25,28,24,.08);
+  --ody-sh-md:4px 4px 0 rgba(25,28,24,.11);
+  --ody-sh-lg:0 16px 40px rgba(25,28,24,.16),0 4px 10px rgba(25,28,24,.08);
+  --ody-sh-pop:0 12px 34px rgba(25,28,24,.20),3px 3px 0 rgba(25,28,24,.10);
+  --ody-elev-rest:none;
+  --ody-elev-raised:var(--ody-sh-sm);
+  --ody-elev-hover:var(--ody-sh-md);
+  --ody-elev-sticky:var(--ody-sh-md);
+  --ody-elev-overlay:var(--ody-sh-lg);
+  --ody-elev-modal:var(--ody-sh-pop);
+
+  --ody-ease-out:cubic-bezier(.2,.6,.25,1);
+  --ody-ease-in-out:cubic-bezier(.65,0,.35,1);
+  --ody-ease-spring:cubic-bezier(.32,1.22,.62,1);
+  --ody-ease:var(--ody-ease-out);
+  --ody-dur:140ms;
+  --ody-dur-1:120ms;
+  --ody-dur-2:180ms;
+  --ody-dur-3:240ms;
+  --ody-dur-4:320ms;
+  --ody-tap:40px;
+  --ody-sp-1:4px;
+  --ody-sp-2:8px;
+  --ody-sp-3:12px;
+  --ody-sp-4:16px;
+  --ody-sp-5:20px;
+  --ody-sp-6:24px;
+  --ody-sp-8:32px;
+  --ody-z-sticky:20;
+  --ody-z-nav:30;
+  --ody-z-dropdown:40;
+  --ody-z-overlay:60;
+  --ody-z-toast:80;
+
+  --ody-fs-body:14px;
+  --ody-lh-body:1.5;
+  --ody-fs-h1:24px;
+  --ody-lh-h1:1.2;
+  --ody-fs-h2:18px;
+  --ody-lh-h2:1.3;
+  --ody-fs-h3:14.5px;
+  --ody-fs-eyebrow:11.5px;
+  --ody-track-eyebrow:.14em;
+  --ody-fs-stat:28px;
+  --ody-fs-sm:12px;
+  --ody-fs-micro:11px;
+  --ody-fw-medium:550;
+  --ody-fw-semibold:650;
+  --ody-font:"Inter","Inter Variable",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC",sans-serif;
+  --ody-serif:Georgia,Cambria,"Times New Roman",Times,"Songti SC","Noto Serif CJK SC","Yu Mincho",serif;
+  --ody-mono:"JetBrains Mono","SFMono-Regular",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+
+  --ody-grid-line:color-mix(in srgb,var(--ody-ink) 6%,transparent);
+  --ody-frame-rule:color-mix(in srgb,var(--ody-ink) 66%,var(--ody-border));
+  --ody-frame-marker:var(--ody-accent);
+  --ody-surface-etched:color-mix(in srgb,var(--ody-surface) 76%,var(--ody-bg-2));
+  --ody-coordinate-ink:var(--ody-ink-4);
+  --ody-scrim:rgba(20,23,33,.46);
+}
+
+@media (prefers-color-scheme:dark) {
+  :where([data-ody-foundation]:not([data-theme="light"])) {
+    --ody-bg:#0f120f;
+    --ody-bg-2:#0a0c0a;
+    --ody-surface:#171b17;
+    --ody-surface-2:#1d221d;
+    --ody-surface-3:#252b25;
+    --ody-border:#343b34;
+    --ody-border-2:#4a534a;
+    --ody-hairline:#292f29;
+    --ody-ink:#ede9dd;
+    --ody-ink-2:#c7c2b5;
+    --ody-ink-3:#aaa497;
+    --ody-ink-4:#898477;
+    --ody-accent:#ff7559;
+    --ody-accent-2:#e85f45;
+    --ody-accent-ink:#ff9a83;
+    --ody-accent-soft:#33201b;
+    --ody-accent-soft-2:#4c2a22;
+    --ody-ring:rgba(255,117,89,.38);
+    --ody-ok:#34d399;
+    --ody-ok-soft:#10281f;
+    --ody-ok-ink:#6ee7b7;
+    --ody-warn:#fbbf24;
+    --ody-warn-soft:#2a2110;
+    --ody-warn-ink:#fcd34d;
+    --ody-down:#fb7185;
+    --ody-down-soft:#2c1620;
+    --ody-down-ink:#fda4af;
+    --ody-info:#22d3ee;
+    --ody-info-soft:#0b2831;
+    --ody-info-ink:#67e8f9;
+    --ody-unknown:#6b7280;
+    --ody-scrim:rgba(0,0,0,.62);
+    --ody-sh-xs:0 1px 0 rgba(0,0,0,.44);
+    --ody-sh-sm:2px 2px 0 rgba(0,0,0,.38);
+    --ody-sh-md:4px 4px 0 rgba(0,0,0,.50);
+    --ody-sh-lg:0 16px 40px rgba(0,0,0,.62),0 4px 10px rgba(0,0,0,.48);
+    --ody-sh-pop:0 12px 34px rgba(0,0,0,.68),3px 3px 0 rgba(0,0,0,.44);
+  }
+}
+
+:where([data-ody-foundation][data-theme="dark"]) {
+  --ody-bg:#0f120f;
+  --ody-bg-2:#0a0c0a;
+  --ody-surface:#171b17;
+  --ody-surface-2:#1d221d;
+  --ody-surface-3:#252b25;
+  --ody-border:#343b34;
+  --ody-border-2:#4a534a;
+  --ody-hairline:#292f29;
+  --ody-ink:#ede9dd;
+  --ody-ink-2:#c7c2b5;
+  --ody-ink-3:#aaa497;
+  --ody-ink-4:#898477;
+  --ody-accent:#ff7559;
+  --ody-accent-2:#e85f45;
+  --ody-accent-ink:#ff9a83;
+  --ody-accent-soft:#33201b;
+  --ody-accent-soft-2:#4c2a22;
+  --ody-ring:rgba(255,117,89,.38);
+  --ody-ok:#34d399;
+  --ody-ok-soft:#10281f;
+  --ody-ok-ink:#6ee7b7;
+  --ody-warn:#fbbf24;
+  --ody-warn-soft:#2a2110;
+  --ody-warn-ink:#fcd34d;
+  --ody-down:#fb7185;
+  --ody-down-soft:#2c1620;
+  --ody-down-ink:#fda4af;
+  --ody-info:#22d3ee;
+  --ody-info-soft:#0b2831;
+  --ody-info-ink:#67e8f9;
+  --ody-unknown:#6b7280;
+  --ody-scrim:rgba(0,0,0,.62);
+  --ody-sh-xs:0 1px 0 rgba(0,0,0,.44);
+  --ody-sh-sm:2px 2px 0 rgba(0,0,0,.38);
+  --ody-sh-md:4px 4px 0 rgba(0,0,0,.50);
+  --ody-sh-lg:0 16px 40px rgba(0,0,0,.62),0 4px 10px rgba(0,0,0,.48);
+  --ody-sh-pop:0 12px 34px rgba(0,0,0,.68),3px 3px 0 rgba(0,0,0,.44);
+}

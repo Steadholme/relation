@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Heartlines 心轨</title>
+  <desc id="desc">两颗星体由一条心形轨迹连接。</desc>
+  <defs>
+    <linearGradient id="basalt" x1="48" y1="36" x2="464" y2="476" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1b231f"/>
+      <stop offset="1" stop-color="#090d0b"/>
+    </linearGradient>
+    <linearGradient id="heartline" x1="132" y1="142" x2="394" y2="370" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#62c4b8"/>
+      <stop offset=".46" stop-color="#eee4cb"/>
+      <stop offset="1" stop-color="#e87352"/>
+    </linearGradient>
+    <radialGradient id="copper" cx="0" cy="0" r="1" gradientTransform="translate(355 155) rotate(130) scale(90)">
+      <stop stop-color="#ffb092"/>
+      <stop offset=".52" stop-color="#e87352"/>
+      <stop offset="1" stop-color="#8f3826"/>
+    </radialGradient>
+    <radialGradient id="teal" cx="0" cy="0" r="1" gradientTransform="translate(150 344) rotate(-42) scale(82)">
+      <stop stop-color="#a1e0d7"/>
+      <stop offset=".55" stop-color="#62c4b8"/>
+      <stop offset="1" stop-color="#286c65"/>
+    </radialGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="frame">
+      <rect x="20" y="20" width="472" height="472" rx="42"/>
+    </clipPath>
+  </defs>
+
+  <rect x="20" y="20" width="472" height="472" rx="42" fill="url(#basalt)" stroke="#3c4942" stroke-width="8"/>
+  <g clip-path="url(#frame)" opacity=".52" stroke="#8da096" stroke-width="1">
+    <path d="M20 116h472M20 212h472M20 308h472M20 404h472" opacity=".22"/>
+    <path d="M116 20v472M212 20v472M308 20v472M404 20v472" opacity=".22"/>
+    <path d="M20 68h472M20 164h472M20 260h472M20 356h472M20 452h472" stroke-dasharray="2 12" opacity=".18"/>
+    <path d="M68 20v472M164 20v472M260 20v472M356 20v472M452 20v472" stroke-dasharray="2 12" opacity=".18"/>
+  </g>
+
+  <g fill="none" stroke="#c8d2cc" opacity=".32">
+    <circle cx="256" cy="256" r="178"/>
+    <circle cx="256" cy="256" r="132" stroke-dasharray="6 12"/>
+    <path d="M64 256h384M256 64v384" stroke-dasharray="3 15"/>
+  </g>
+
+  <path d="M151 344C83 279 106 174 178 166c40-5 67 19 78 51 11-32 38-56 78-51 72 8 95 113 27 178-41 40-77 63-105 83-28-20-64-43-105-83Z" fill="none" stroke="#090d0b" stroke-width="34" opacity=".72"/>
+  <path d="M151 344C83 279 106 174 178 166c40-5 67 19 78 51 11-32 38-56 78-51 72 8 95 113 27 178-41 40-77 63-105 83-28-20-64-43-105-83Z" fill="none" stroke="url(#heartline)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M159 337c-34-34-45-75-31-108" fill="none" stroke="#d8fff9" stroke-width="3" stroke-linecap="round" opacity=".76"/>
+
+  <g filter="url(#glow)">
+    <circle cx="151" cy="344" r="33" fill="url(#teal)" stroke="#d3f4ef" stroke-width="5"/>
+    <circle cx="355" cy="155" r="37" fill="url(#copper)" stroke="#ffe3d9" stroke-width="5"/>
+  </g>
+  <circle cx="151" cy="344" r="52" fill="none" stroke="#62c4b8" stroke-width="2" stroke-dasharray="5 9" opacity=".7"/>
+  <circle cx="355" cy="155" r="58" fill="none" stroke="#e87352" stroke-width="2" stroke-dasharray="4 11" opacity=".74"/>
+
+  <g fill="#efe9da">
+    <circle cx="86" cy="110" r="4"/>
+    <circle cx="426" cy="380" r="3" opacity=".74"/>
+    <circle cx="114" cy="420" r="3" opacity=".5"/>
+    <circle cx="415" cy="92" r="4" opacity=".58"/>
+    <path d="m84 108 2-9 2 9 9 2-9 2-2 9-2-9-9-2 9-2Z" opacity=".82"/>
+  </g>
+
+  <g fill="#98a79f" font-family="ui-monospace, monospace" font-size="12" font-weight="700" letter-spacing="2">
+    <text x="48" y="66">HL / 001</text>
+    <text x="366" y="462">HEARTLINES</text>
+  </g>
+</svg>
