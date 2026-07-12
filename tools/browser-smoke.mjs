@@ -63,6 +63,34 @@ async function connect(webSocketUrl, eventHandler) {
   };
 }
 
+async function waitForExit(child, timeout = 1500) {
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return new Promise((resolve) => {
+    let timer;
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    timer = setTimeout(() => {
+      child.off("exit", onExit);
+      resolve(false);
+    }, timeout);
+    child.once("exit", onExit);
+  });
+}
+
+async function removeProfile(profile) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(profile, { force: true, recursive: true });
+      return;
+    } catch (error) {
+      if (error?.code !== "ENOTEMPTY" || attempt === 4) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  }
+}
+
 async function smoke(viewport) {
   const profile = await mkdtemp(path.join(os.tmpdir(), `heartlines-${viewport.name}-`));
   const errors = [];
@@ -349,13 +377,12 @@ async function smoke(viewport) {
     };
   } finally {
     cdp?.close();
-    chrome.kill("SIGTERM");
-    await new Promise((resolve) => {
-      if (chrome.exitCode !== null) resolve();
-      else chrome.once("exit", resolve);
-      setTimeout(resolve, 1500);
-    });
-    await rm(profile, { force: true, recursive: true });
+    if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill("SIGTERM");
+    if (!(await waitForExit(chrome))) {
+      chrome.kill("SIGKILL");
+      await waitForExit(chrome);
+    }
+    await removeProfile(profile);
   }
 }
 
