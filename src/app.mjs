@@ -13,10 +13,9 @@ import {
   loadDocument,
   saveDocument,
   shortestPath,
-  yearBounds,
 } from "./model.mjs";
 
-const STORAGE_KEY = "w33d.relation.heartlines.v1";
+const STORAGE_KEY = "w33d.relation.heartlines.v2";
 const THEME_KEY = "w33d.relation.theme.v1";
 const MOTION_KEY = "w33d.relation.motion.v1";
 const HISTORY_LIMIT = 40;
@@ -24,10 +23,9 @@ const mobileMedia = window.matchMedia("(max-width: 820px)");
 const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const KIND_META = Object.freeze({
-  partner: { label: "伴侣", short: "PAIR" },
-  dated: { label: "曾经交往", short: "PAST" },
-  affection: { label: "心动", short: "PULSE" },
-  spark: { label: "火花", short: "SPARK" },
+  partner: { label: "现任伴侣", short: "PAIR" },
+  dated: { label: "前任伴侣", short: "PAST" },
+  affection: { label: "单向好感", short: "PULSE" },
 });
 
 const ACCENTS = Object.freeze([
@@ -77,9 +75,6 @@ const requiredIds = [
   "graphSummary",
   "peopleList",
   "relationsList",
-  "timelineRange",
-  "timelineYear",
-  "timelinePlay",
   "inspectorKicker",
   "inspectorTitle",
   "inspectorBody",
@@ -89,6 +84,7 @@ const requiredIds = [
   "personDialog",
   "personForm",
   "personName",
+  "personGender",
   "personAccent",
   "personVisibility",
   "relationshipDialog",
@@ -97,8 +93,6 @@ const requiredIds = [
   "relationshipTarget",
   "relationshipKind",
   "relationshipDirection",
-  "relationshipStarted",
-  "relationshipEnded",
   "relationshipIntensity",
   "relationshipNote",
   "relationshipVisibility",
@@ -125,13 +119,10 @@ const state = {
   motionFollowsSystem: true,
   motionReduced: false,
   path: null,
-  playing: false,
-  playbackTimer: null,
   selection: null,
   searchIndex: -1,
   theme: "dark",
   view: "graph",
-  year: new Date().getFullYear(),
 };
 
 function safeStorageGet(key) {
@@ -181,7 +172,6 @@ function displayName(id) {
 function currentRelationships() {
   return filterRelationships(state.document, {
     kinds: [...state.activeKinds],
-    year: state.year,
   });
 }
 
@@ -272,9 +262,6 @@ function commitDocument(nextDocument, message) {
   state.document = cloneDocument(nextDocument);
   state.path = null;
   state.selection = null;
-
-  const bounds = yearBounds(state.document, new Date().getFullYear());
-  state.year = Math.max(bounds.min, Math.min(bounds.max, state.year));
   renderAll({ refit: true });
   if (message) toast(message, "success");
   return true;
@@ -445,7 +432,6 @@ function setSelection(selection, options = {}) {
 function renderMetrics(relationships) {
   const stats = graphStats(state.document, {
     kinds: [...state.activeKinds],
-    year: state.year,
   });
   dom.peopleMetric.textContent = String(stats.peopleCount);
   dom.relationsMetric.textContent = String(stats.relationshipCount);
@@ -490,21 +476,6 @@ function renderPersonOptions() {
   replacePersonOptions(dom.relationshipTarget, "选择人物");
 }
 
-function renderTimeline() {
-  const bounds = yearBounds(state.document, new Date().getFullYear());
-  state.year = Math.max(bounds.min, Math.min(bounds.max, state.year));
-  dom.timelineRange.min = String(bounds.min);
-  dom.timelineRange.max = String(bounds.max);
-  dom.timelineRange.value = String(state.year);
-  dom.timelineYear.textContent = String(state.year);
-  dom.timelinePlay.setAttribute("aria-pressed", String(state.playing));
-  dom.timelinePlay.setAttribute(
-    "aria-label",
-    state.playing ? "暂停时间轴" : "播放时间轴",
-  );
-  dom.timelinePlay.classList.toggle("is-playing", state.playing);
-}
-
 function relatedForPerson(personId, relationships = currentRelationships()) {
   return relationships.filter(
     (relationship) =>
@@ -543,9 +514,9 @@ function renderInspector() {
     orbit.append(element("span"));
     empty.append(
       orbit,
-      element("p", { text: "关系不是排名，而是一张仍在变化的地图。" }),
+      element("p", { text: "关系不是排名，而是一张彼此连接的地图。" }),
       element("small", {
-        text: `当前停在 ${state.year} 年。点选节点、连线，或使用左侧路径工具。`,
+        text: "点选节点、连线，或使用左侧路径工具。",
       }),
     );
     body.append(empty);
@@ -572,7 +543,9 @@ function renderInspector() {
       element("div", { className: "inspector-person__copy" }),
     );
     hero.lastElementChild.append(
-      element("span", { text: person.visibility === "public" ? "可公开" : "仅此设备" }),
+      element("span", {
+        text: `${person.gender ?? "未知"} · ${person.visibility === "public" ? "可公开" : "仅此设备"}`,
+      }),
       element("strong", {
         text: `${relationships.length} 条当前关系线`,
       }),
@@ -588,9 +561,9 @@ function renderInspector() {
     body.append(actions);
 
     const list = element("div", { className: "inspector-connections" });
-    list.append(element("h3", { text: `${state.year} 年的连接` }));
+    list.append(element("h3", { text: "人物连接" }));
     if (relationships.length === 0) {
-      list.append(element("p", { text: "这个时间切片里还没有可见连接。" }));
+      list.append(element("p", { text: "当前筛选中还没有可见连接。" }));
     } else {
       for (const relationship of relationships) {
         const otherId = relationship.sourceId === person.id
@@ -634,7 +607,6 @@ function renderInspector() {
   body.append(pairing);
   const details = element("div", { className: "inspector-details" });
   details.append(
-    infoRow("时间", `${relationship.startedYear} — ${relationship.endedYear ?? "现在"}`),
     infoRow("方向", relationship.direction === "directed" ? "单向" : "双向"),
     infoRow("强度", `${relationship.intensity} / 5`),
     infoRow("可见性", relationship.visibility === "public" ? "可公开" : "仅此设备"),
@@ -674,7 +646,7 @@ function entityListItem(button) {
 function renderEntityLists() {
   const relationships = currentRelationships();
   const components = countComponents(state.document.people, relationships);
-  dom.graphSummary.textContent = `${state.year} 年：${state.document.people.length} 个人物，${relationships.length} 条关系，${components} 个星群。`;
+  dom.graphSummary.textContent = `${state.document.people.length} 个人物，${relationships.length} 条关系，${components} 个星群。`;
   dom.peopleList.replaceChildren(
     ...state.document.people.map((person) =>
       entityListItem(
@@ -692,7 +664,7 @@ function renderEntityLists() {
       entityListItem(
         entityButton(
           `${displayName(relationship.sourceId)} ${relationship.direction === "directed" ? "→" : "↔"} ${displayName(relationship.targetId)}`,
-          `${KIND_META[relationship.kind].label} · ${relationship.startedYear}—${relationship.endedYear ?? "现在"}`,
+          KIND_META[relationship.kind]?.label ?? relationship.kind,
           { relationshipId: relationship.id },
           state.selection?.type === "relationship" && state.selection.id === relationship.id,
         ),
@@ -738,7 +710,6 @@ function renderGraph(options = {}) {
 function renderAll(options = {}) {
   renderFilters();
   renderPersonOptions();
-  renderTimeline();
   renderGraph(options);
   renderInspector();
   renderEntityLists();
@@ -816,7 +787,9 @@ function renderSearch() {
       button.append(
         element("span", { className: "search-result__avatar", text: person.emoji || person.name[0] }),
         element("strong", { text: person.name }),
-        element("small", { text: `${relatedForPerson(person.id).length} 条连接` }),
+        element("small", {
+          text: `${person.gender ?? "未知"} · ${relatedForPerson(person.id).length} 条连接`,
+        }),
       );
       dom.searchResults.append(button);
     }
@@ -849,11 +822,10 @@ function findPath() {
   const result = shortestPath(state.document, sourceId, targetId, {
     kinds: [...state.activeKinds],
     respectDirection: false,
-    year: state.year,
   });
   if (!result) {
     state.path = null;
-    dom.pathSummary.textContent = "这个时间切片里暂时没有可达路径。";
+    dom.pathSummary.textContent = "当前筛选中暂时没有可达路径。";
     state.graph.setSelection(state.selection, []);
     toast("目前找不到两人之间的连接", "warning");
     return;
@@ -886,26 +858,18 @@ function openPersonDialog(personId = null) {
     title.textContent = "编辑人物";
     submit.textContent = "保存人物";
     dom.personName.value = person.name;
+    dom.personGender.value = person.gender ?? "男";
     dom.personAccent.value = person.color || randomAccent();
     dom.personVisibility.value = person.visibility || "private";
   } else {
     title.textContent = "添加人物";
     submit.textContent = "添加到星图";
+    dom.personGender.value = "男";
     dom.personAccent.value = randomAccent();
     dom.personVisibility.value = "private";
   }
   dom.personDialog.showModal();
   window.requestAnimationFrame(() => dom.personName.focus());
-}
-
-function dateValueForYear(year) {
-  return year ? String(year) : "";
-}
-
-function parseDateYear(value, fallback = null) {
-  if (!value) return fallback;
-  const year = Number.parseInt(value.slice(0, 4), 10);
-  return Number.isInteger(year) ? year : fallback;
 }
 
 function openRelationshipDialog(relationshipId = null, sourceId = null) {
@@ -927,8 +891,6 @@ function openRelationshipDialog(relationshipId = null, sourceId = null) {
     dom.relationshipTarget.value = relationship.targetId;
     dom.relationshipKind.value = relationship.kind;
     dom.relationshipDirection.value = relationship.direction;
-    dom.relationshipStarted.value = dateValueForYear(relationship.startedYear);
-    dom.relationshipEnded.value = dateValueForYear(relationship.endedYear);
     dom.relationshipIntensity.value = String(relationship.intensity * 20);
     dom.relationshipNote.value = relationship.note;
     dom.relationshipVisibility.value = relationship.visibility;
@@ -938,8 +900,6 @@ function openRelationshipDialog(relationshipId = null, sourceId = null) {
     dom.relationshipSource.value = sourceId ?? "";
     dom.relationshipKind.value = "partner";
     dom.relationshipDirection.value = "mutual";
-    dom.relationshipStarted.value = dateValueForYear(state.year);
-    dom.relationshipEnded.value = "";
     dom.relationshipIntensity.value = "60";
     dom.relationshipVisibility.value = "private";
   }
@@ -969,6 +929,7 @@ function submitPerson(event) {
               ...person,
               color: dom.personAccent.value,
               emoji: name.slice(0, 1),
+              gender: dom.personGender.value,
               name,
               visibility: dom.personVisibility.value,
             }
@@ -979,6 +940,7 @@ function submitPerson(event) {
       next = createPerson(state.document, {
         color: dom.personAccent.value,
         emoji: name.slice(0, 1),
+        gender: dom.personGender.value,
         name,
         visibility: dom.personVisibility.value,
       });
@@ -1001,12 +963,12 @@ function relationshipInputFromForm(id = undefined) {
   return {
     ...(id ? { id } : {}),
     direction,
-    endedYear: parseDateYear(dom.relationshipEnded.value, null),
+    endedYear: null,
     intensity: Math.max(1, Math.min(5, Math.round(Number(dom.relationshipIntensity.value) / 20))),
     kind: dom.relationshipKind.value,
     note: dom.relationshipNote.value.trim(),
     sourceId,
-    startedYear: parseDateYear(dom.relationshipStarted.value, state.year),
+    startedYear: 1,
     targetId,
     visibility: dom.relationshipVisibility.value,
   };
@@ -1059,12 +1021,10 @@ function deleteSelection() {
 }
 
 function resetDemo() {
-  if (!window.confirm("重置会用合成演示图替换当前本地编辑。继续吗？")) return;
+  if (!window.confirm("重置会用项目默认关系图替换当前本地编辑。继续吗？")) return;
   const demo = createDemoDocument();
-  const bounds = yearBounds(demo, new Date().getFullYear());
-  state.year = bounds.max;
   state.activeKinds = new Set(RELATION_KINDS);
-  commitDocument(demo, "已恢复合成演示星图");
+  commitDocument(demo, "已恢复默认关系图");
 }
 
 function download(url, filename) {
@@ -1092,10 +1052,10 @@ async function exportPng() {
     const result = await state.graph.exportPng();
     if (result instanceof Blob) {
       const url = URL.createObjectURL(result);
-      download(url, `heartlines-${state.year}.png`);
+      download(url, "heartlines.png");
       URL.revokeObjectURL(url);
     } else if (typeof result === "string") {
-      download(result, `heartlines-${state.year}.png`);
+      download(result, "heartlines.png");
     } else {
       throw new Error("Canvas export returned no image");
     }
@@ -1103,38 +1063,6 @@ async function exportPng() {
   } catch {
     toast("暂时无法导出 PNG", "error");
   }
-}
-
-function toggleTimeline() {
-  if (state.playing) {
-    stopTimeline();
-    return;
-  }
-  const min = Number(dom.timelineRange.min);
-  const max = Number(dom.timelineRange.max);
-  if (state.year >= max) state.year = min;
-  state.playing = true;
-  renderTimeline();
-  state.playbackTimer = window.setInterval(() => {
-    if (state.year >= max) {
-      stopTimeline();
-      return;
-    }
-    state.year += 1;
-    state.path = null;
-    setPathSummary();
-    renderTimeline();
-    renderGraph();
-    renderInspector();
-    renderEntityLists();
-  }, state.motionReduced ? 1300 : 850);
-}
-
-function stopTimeline() {
-  if (state.playbackTimer !== null) window.clearInterval(state.playbackTimer);
-  state.playbackTimer = null;
-  state.playing = false;
-  renderTimeline();
 }
 
 function handleInspectorAction(action) {
@@ -1252,18 +1180,6 @@ function bindEvents() {
   dom.graphViewButton.addEventListener("click", () => setView("graph"));
   dom.listViewButton.addEventListener("click", () => setView("list"));
 
-  dom.timelineRange.addEventListener("input", () => {
-    stopTimeline();
-    state.year = Number(dom.timelineRange.value);
-    state.path = null;
-    setPathSummary();
-    renderTimeline();
-    renderGraph();
-    renderInspector();
-    renderEntityLists();
-  });
-  dom.timelinePlay.addEventListener("click", toggleTimeline);
-
   dom.peopleList.addEventListener("click", (event) => {
     const button = event.target.closest("[data-person-id]");
     if (button) setSelection({ type: "person", id: button.dataset.personId });
@@ -1361,9 +1277,6 @@ function bindEvents() {
   motionMedia.addEventListener?.("change", (event) => {
     if (state.motionFollowsSystem) setMotionReduced(event.matches, { persist: false });
   });
-  window.document.addEventListener("visibilitychange", () => {
-    if (window.document.hidden) stopTimeline();
-  });
 }
 
 function boot() {
@@ -1376,11 +1289,9 @@ function boot() {
     });
   } catch {
     state.document = createDemoDocument();
-    loadWarning = "本地草稿无法读取，已打开安全的合成演示图";
+    loadWarning = "本地草稿无法读取，已打开项目默认关系图";
   }
 
-  const bounds = yearBounds(state.document, new Date().getFullYear());
-  state.year = bounds.max;
   state.theme = safeStorageGet(THEME_KEY) === "light" ? "light" : "dark";
   const savedMotion = safeStorageGet(MOTION_KEY);
   state.motionFollowsSystem = savedMotion === null;

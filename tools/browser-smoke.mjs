@@ -234,8 +234,8 @@ async function smoke(viewport) {
       viewport.name === "mobile" ? "reduced" : "full",
       "the initial motion setting should follow the emulated operating-system preference",
     );
-    assert.ok(result.people >= 8);
-    assert.ok(result.relations >= 1);
+    assert.equal(result.people, 116);
+    assert.equal(result.relations, 108);
     assert.ok(result.graphWidth >= 280, `graph width ${result.graphWidth}`);
     assert.ok(result.graphHeight >= 280, `graph height ${result.graphHeight}`);
     assert.ok(result.canvasBytes > 1000);
@@ -292,10 +292,29 @@ async function smoke(viewport) {
             && rail.getAttribute("aria-hidden") !== "true"
             && document.activeElement === document.getElementById("searchInput");
 
+          const inspector = document.querySelector(".inspector");
+          const selection = document.querySelector('[data-mobile-action="selection"]');
+          document.querySelector("#peopleList [data-person-id]").click();
+          await new Promise((resolve) => setTimeout(resolve, 320));
+          const inspectorOpenedForSelection = !inspector.inert
+            && inspector.getAttribute("aria-hidden") !== "true"
+            && inspector.classList.contains("is-mobile-open")
+            && inspector.getBoundingClientRect().top < innerHeight;
+
+          selection.click();
+          await new Promise((resolve) => setTimeout(resolve, 320));
+          const inspectorRect = inspector.getBoundingClientRect();
+          const inspectorClosedAfterToggle = inspector.inert
+            && inspector.getAttribute("aria-hidden") === "true"
+            && !inspector.classList.contains("is-mobile-open")
+            && inspectorRect.top >= innerHeight;
+
           return {
             closedAfterToggle,
             initiallyHidden,
             initiallyInert,
+            inspectorClosedAfterToggle,
+            inspectorOpenedForSelection,
             openedByControls,
             openedBySearch,
           };
@@ -307,6 +326,8 @@ async function smoke(viewport) {
         closedAfterToggle: true,
         initiallyHidden: true,
         initiallyInert: true,
+        inspectorClosedAfterToggle: true,
+        inspectorOpenedForSelection: true,
         openedByControls: true,
         openedBySearch: true,
       });

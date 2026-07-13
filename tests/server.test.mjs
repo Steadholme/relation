@@ -39,7 +39,15 @@ test("serves a self-contained entrypoint with a strict policy", async () => {
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("cache-control"), "no-cache");
   assert.match(html, /data-ody-foundation/);
-  assert.doesNotMatch(html, /https?:\/\//);
+  assert.doesNotMatch(
+    html,
+    /<(?:script|link|img|iframe|source|video|audio)\b[^>]*(?:src|href)=["']https?:\/\//i,
+  );
+  assert.match(
+    html,
+    /RelationWeb\/blob\/ea9b337492572b8cf63bb9c781fb2ecd70937346\/data\.js/,
+  );
+  assert.match(html, /rel="noopener noreferrer"/);
 });
 
 test("supports HEAD and validators", async () => {

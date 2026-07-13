@@ -1,7 +1,13 @@
+import {
+  UPSTREAM_PEOPLE,
+  UPSTREAM_RELATIONSHIPS,
+} from "./upstream-data.mjs";
+
 const DOCUMENT_SCHEMA_VERSION = 1;
 const DEFAULT_STORAGE_KEY = "w33d.relation.document.v1";
 const RELATION_DIRECTIONS = new Set(["mutual", "directed"]);
 const RELATION_VISIBILITIES = new Set(["public", "private"]);
+const PERSON_GENDERS = new Set(["男", "女"]);
 const MIN_YEAR = 1;
 const MAX_YEAR = 9999;
 
@@ -19,6 +25,7 @@ export const DOCUMENT_LIMITS = Object.freeze({
   dataPolicy: 80,
   entityId: 128,
   personName: 80,
+  personGender: 4,
   personColor: 32,
   personEmoji: 16,
   relationshipNote: 500,
@@ -31,7 +38,6 @@ export const RELATION_KINDS = Object.freeze([
   "partner",
   "dated",
   "affection",
-  "spark",
 ]);
 
 const RELATION_KIND_SET = new Set(RELATION_KINDS);
@@ -46,153 +52,6 @@ const PERSON_COLORS = Object.freeze([
   "#f45b69",
   "#49c6e5",
   "#a0d568",
-]);
-
-const DEMO_PEOPLE = Object.freeze([
-  { id: "p01", name: "林见月", color: "#ff6ba8", emoji: "月" },
-  { id: "p02", name: "周听潮", color: "#8d7cff", emoji: "潮" },
-  { id: "p03", name: "沈拾星", color: "#36d6c5", emoji: "星" },
-  { id: "p04", name: "许照野", color: "#ff9f43", emoji: "野" },
-  { id: "p05", name: "苏眠云", color: "#63a4ff", emoji: "云" },
-  { id: "p06", name: "唐问夏", color: "#d86cff", emoji: "夏" },
-  { id: "p07", name: "江回声", color: "#f45b69", emoji: "声" },
-  { id: "p08", name: "白予光", color: "#49c6e5", emoji: "光" },
-  { id: "p09", name: "陆知遥", color: "#a0d568", emoji: "遥" },
-]);
-
-const DEMO_RELATIONSHIPS = Object.freeze([
-  {
-    id: "r01",
-    sourceId: "p01",
-    targetId: "p02",
-    kind: "partner",
-    direction: "mutual",
-    startedYear: 2023,
-    endedYear: null,
-    intensity: 5,
-    note: "在同一场流星雨里交换了愿望。",
-    visibility: "public",
-  },
-  {
-    id: "r02",
-    sourceId: "p01",
-    targetId: "p03",
-    kind: "affection",
-    direction: "directed",
-    startedYear: 2020,
-    endedYear: 2022,
-    intensity: 4,
-    note: "一封没有寄出的合成故事。",
-    visibility: "public",
-  },
-  {
-    id: "r03",
-    sourceId: "p02",
-    targetId: "p04",
-    kind: "dated",
-    direction: "mutual",
-    startedYear: 2019,
-    endedYear: 2021,
-    intensity: 3,
-    note: "短暂同行，后来各自看见新的风景。",
-    visibility: "public",
-  },
-  {
-    id: "r04",
-    sourceId: "p03",
-    targetId: "p04",
-    kind: "spark",
-    direction: "mutual",
-    startedYear: 2021,
-    endedYear: null,
-    intensity: 2,
-    note: "每次相遇都有一点微光。",
-    visibility: "public",
-  },
-  {
-    id: "r05",
-    sourceId: "p03",
-    targetId: "p05",
-    kind: "affection",
-    direction: "directed",
-    startedYear: 2022,
-    endedYear: null,
-    intensity: 4,
-    note: "把喜欢藏进了日常问候。",
-    visibility: "public",
-  },
-  {
-    id: "r06",
-    sourceId: "p05",
-    targetId: "p06",
-    kind: "partner",
-    direction: "mutual",
-    startedYear: 2024,
-    endedYear: null,
-    intensity: 5,
-    note: "一起把未知写成了双人旅程。",
-    visibility: "public",
-  },
-  {
-    id: "r07",
-    sourceId: "p04",
-    targetId: "p07",
-    kind: "affection",
-    direction: "directed",
-    startedYear: 2023,
-    endedYear: null,
-    intensity: 3,
-    note: "从一次偶然的对视开始。",
-    visibility: "public",
-  },
-  {
-    id: "r08",
-    sourceId: "p06",
-    targetId: "p07",
-    kind: "spark",
-    direction: "mutual",
-    startedYear: 2022,
-    endedYear: null,
-    intensity: 2,
-    note: "默契像电流一样一闪而过。",
-    visibility: "public",
-  },
-  {
-    id: "r09",
-    sourceId: "p07",
-    targetId: "p08",
-    kind: "dated",
-    direction: "mutual",
-    startedYear: 2018,
-    endedYear: 2020,
-    intensity: 4,
-    note: "故事结束，温柔仍然被记得。",
-    visibility: "public",
-  },
-  {
-    id: "r10",
-    sourceId: "p08",
-    targetId: "p09",
-    kind: "affection",
-    direction: "directed",
-    startedYear: 2021,
-    endedYear: null,
-    intensity: 3,
-    note: "沿着光的方向悄悄靠近。",
-    visibility: "public",
-  },
-  {
-    id: "r11",
-    sourceId: "p02",
-    targetId: "p09",
-    kind: "spark",
-    direction: "mutual",
-    startedYear: 2025,
-    endedYear: null,
-    intensity: 2,
-    note: "新的星轨刚刚亮起。",
-    visibility: "public",
-  },
 ]);
 
 function isRecord(value) {
@@ -286,17 +145,23 @@ function defaultStorage() {
 }
 
 /**
- * 返回一份完全合成、无性别字段的演示文档。
+ * 返回用户授权采用的 RelationWeb 上游数据快照。
  */
 export function createDemoDocument() {
   const document = {
     schemaVersion: DOCUMENT_SCHEMA_VERSION,
-    id: "synthetic-starlight-demo",
-    title: "心动星轨",
-    description: "所有名字与关系均为合成演示数据，不对应任何真实人物。",
-    dataPolicy: "synthetic-no-gender",
-    people: cloneValue(DEMO_PEOPLE),
-    relationships: cloneValue(DEMO_RELATIONSHIPS),
+    id: "relationweb-upstream-ea9b337",
+    title: "恋爱关系图",
+    description: "数据来自用户指定的 RelationWeb data.js；双向伴侣边已去重，好感关系保留原方向。",
+    dataPolicy: "authorized-upstream-data",
+    source: {
+      repository: "https://github.com/Last-emo-boy/RelationWeb",
+      commit: "ea9b337492572b8cf63bb9c781fb2ecd70937346",
+      path: "data.js",
+      normalization: "reciprocal-partner-edges-canonicalized",
+    },
+    people: cloneValue(UPSTREAM_PEOPLE),
+    relationships: cloneValue(UPSTREAM_RELATIONSHIPS),
   };
 
   return assertValidDocument(document);
@@ -421,8 +286,21 @@ export function validateDocument(document) {
       }
     }
 
-    if (Object.hasOwn(person, "gender") || Object.hasOwn(person, "sex")) {
-      addError(path, "gender and sex fields are not part of this model");
+    if (Object.hasOwn(person, "gender")) {
+      if (typeof person.gender !== "string") {
+        addError(`${path}.gender`, "must be a string");
+      } else if (person.gender.length > DOCUMENT_LIMITS.personGender) {
+        addError(
+          `${path}.gender`,
+          `must contain at most ${DOCUMENT_LIMITS.personGender} characters`,
+        );
+      } else if (!PERSON_GENDERS.has(person.gender)) {
+        addError(`${path}.gender`, "must be 男 or 女");
+      }
+    }
+
+    if (Object.hasOwn(person, "sex")) {
+      addError(`${path}.sex`, "is not supported; use gender");
     }
 
     for (const [field, maxLength] of [
@@ -875,7 +753,7 @@ export function createRelationship(
       : nextAvailableId(next, "relationship"),
     sourceId,
     targetId,
-    kind: input.kind ?? "spark",
+    kind: input.kind ?? (direction === "directed" ? "affection" : "dated"),
     direction,
     startedYear: input.startedYear ?? currentYear(),
     endedYear: input.endedYear ?? null,

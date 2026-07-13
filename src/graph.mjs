@@ -19,9 +19,15 @@ const RELATION_STYLES = {
   partner: { distance: 132, strength: 0.058, width: 2.6, dash: [] },
   dated: { distance: 188, strength: 0.028, width: 2.1, dash: [10, 7] },
   affection: { distance: 158, strength: 0.038, width: 2.2, dash: [1.8, 6.5] },
-  spark: { distance: 108, strength: 0.072, width: 1.45, dash: [] },
   default: { distance: 166, strength: 0.034, width: 2, dash: [6, 5] },
 };
+
+const RELATION_LABELS = Object.freeze({
+  partner: "现任",
+  dated: "前任",
+  affection: "好感",
+  default: "关系",
+});
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -104,17 +110,6 @@ function tangentOnQuadratic(geometry, t) {
       + 2 * t * (geometry.end.x - geometry.control.x),
     y: 2 * (1 - t) * (geometry.control.y - geometry.start.y)
       + 2 * t * (geometry.end.y - geometry.control.y),
-  };
-}
-
-function shiftGeometry(geometry, amount) {
-  const offsetX = geometry.normal.x * amount;
-  const offsetY = geometry.normal.y * amount;
-  return {
-    ...geometry,
-    start: { x: geometry.start.x + offsetX, y: geometry.start.y + offsetY },
-    control: { x: geometry.control.x + offsetX, y: geometry.control.y + offsetY },
-    end: { x: geometry.end.x + offsetX, y: geometry.end.y + offsetY },
   };
 }
 
@@ -1050,17 +1045,8 @@ export class HeartGraph {
     context.lineWidth = (style.width + (state.selected || state.path ? 0.8 : 0)) / scale;
     context.setLineDash(style.dash.map((value) => value / scale));
 
-    if (edge.kind === "spark") {
-      context.setLineDash([]);
-      const separation = 2.6 / scale;
-      traceQuadratic(context, shiftGeometry(geometry, -separation));
-      context.stroke();
-      traceQuadratic(context, shiftGeometry(geometry, separation));
-      context.stroke();
-    } else {
-      traceQuadratic(context, geometry);
-      context.stroke();
-    }
+    traceQuadratic(context, geometry);
+    context.stroke();
 
     context.setLineDash([]);
     if (edge.directed) this.drawArrow(context, geometry, edge.target.accent, alpha);
@@ -1095,7 +1081,7 @@ export class HeartGraph {
   drawEdgeBadge(context, edge, geometry, state) {
     const point = pointOnQuadratic(geometry, 0.5);
     const scale = this.view.scale;
-    const label = edge.kind === "default" ? "relation" : edge.kind;
+    const label = RELATION_LABELS[edge.kind] ?? RELATION_LABELS.default;
     const fontSize = 10.5 / scale;
     context.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
     const textWidth = context.measureText(label).width;
@@ -1126,7 +1112,7 @@ export class HeartGraph {
     const scale = this.view.scale;
     edges.forEach((edge) => {
       const geometry = this.edgeGeometry(edge);
-      const count = edge.kind === "spark" ? 4 : 3;
+      const count = 3;
       for (let index = 0; index < count; index += 1) {
         const speed = 0.00012 + edge.intensity * 0.000018;
         const offset = hashUnit(edge.id, 61 + index);

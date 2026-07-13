@@ -19,7 +19,6 @@
   --rel-partner: var(--ody-accent, #e87352);
   --rel-dated: var(--ody-info, #67bfb4);
   --rel-affection: var(--ody-warn, #d7ad62);
-  --rel-spark: #a991d1;
   --rel-danger: var(--ody-down, #f06c61);
   --rel-danger-soft: var(--ody-down-soft, #301718);
   --rel-ok: var(--ody-ok, #57bd81);
@@ -349,8 +348,7 @@ body {
 .icon-button svg,
 .search-field svg,
 .demo-disclaimer svg,
-.mobile-dock svg,
-.timeline__play svg {
+.mobile-dock svg {
   width: 19px;
   height: 19px;
   fill: none;
@@ -615,7 +613,7 @@ body {
 
 .metric:nth-child(2)::after { background: var(--rel-dated); }
 .metric:nth-child(3)::after { background: var(--rel-affection); }
-.metric:nth-child(4)::after { background: var(--rel-spark); }
+.metric:nth-child(4)::after { background: var(--rel-accent); }
 
 .metric strong,
 .metric span {
@@ -636,6 +634,27 @@ body {
   margin-top: 2px;
   color: var(--rel-faint);
   font-size: 10px;
+}
+
+.source-note {
+  margin: 10px 1px 0;
+  color: var(--rel-faint);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.source-note a {
+  color: var(--rel-ink-2);
+  text-underline-offset: 2px;
+}
+
+.source-note span {
+  display: block;
+}
+
+.source-note code {
+  font-family: var(--rel-mono);
+  font-size: .95em;
 }
 
 .filter-stack {
@@ -714,10 +733,8 @@ body {
 .filter-button__swatch--partner { color: var(--rel-partner); }
 .filter-button__swatch--dated { color: var(--rel-dated); }
 .filter-button__swatch--affection { color: var(--rel-affection); }
-.filter-button__swatch--spark { color: var(--rel-spark); }
 .filter-button__swatch--dated::before { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
 .filter-button__swatch--affection::before { height: 1px; background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 5px); }
-.filter-button__swatch--spark::after { border-radius: 0; transform: translateY(-50%) rotate(45deg); }
 
 .segmented-control {
   display: grid;
@@ -884,7 +901,7 @@ body {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: 68px minmax(0, 1fr) auto;
+  grid-template-rows: 68px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1249,82 +1266,10 @@ body {
   box-shadow: inset 2px 0 0 var(--rel-accent);
 }
 
-.timeline {
-  position: relative;
-  z-index: 25;
-  display: grid;
-  grid-template-columns: 48px 96px minmax(120px, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  min-height: 72px;
-  padding: 9px 18px;
-  background: color-mix(in srgb, var(--rel-panel) 94%, transparent);
-  border-top: 1px solid var(--rel-rule);
-  backdrop-filter: blur(16px);
-}
-
-.timeline__play {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  color: #15100d;
-  background: var(--rel-accent);
-  border: 1px solid color-mix(in srgb, var(--rel-accent) 75%, #000);
-  border-radius: 50%;
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--rel-accent) 10%, transparent);
-}
-
-.timeline__play svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
-  stroke: none;
-}
-
-.timeline__play.is-playing {
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--rel-accent) 14%, transparent), 0 0 24px color-mix(in srgb, var(--rel-accent) 24%, transparent);
-  animation: signal-pulse 1.4s ease-in-out infinite;
-}
-
-.timeline__copy span,
-.timeline__copy strong {
-  display: block;
-}
-
-.timeline__copy span {
-  color: var(--rel-faint);
-  font-size: 9px;
-}
-
-.timeline__copy strong {
-  color: var(--rel-ink);
-  font-family: var(--rel-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-#timelineRange,
 .field--range input {
   width: 100%;
   min-width: 0;
   accent-color: var(--rel-accent);
-}
-
-.timeline__ticks {
-  position: absolute;
-  right: 18px;
-  bottom: 4px;
-  left: 174px;
-  display: flex;
-  justify-content: space-between;
-  color: var(--rel-faint);
-  font-family: var(--rel-mono);
-  font-size: 7px;
-  letter-spacing: .1em;
-  pointer-events: none;
 }
 
 .inspector {
@@ -1526,7 +1471,6 @@ body {
 
 .relation-glyph--dated { color: var(--rel-dated); border-style: dashed; }
 .relation-glyph--affection { color: var(--rel-affection); border-style: dotted; }
-.relation-glyph--spark { color: var(--rel-spark); border-radius: var(--rel-radius-xs); }
 
 .inspector-details {
   margin-top: 14px;
@@ -1916,8 +1860,7 @@ body {
   color-scheme: light;
 }
 
-.rel-app[data-theme="light"] .button--primary,
-.rel-app[data-theme="light"] .timeline__play {
+.rel-app[data-theme="light"] .button--primary {
   color: #fffaf2;
 }
 
@@ -1958,9 +1901,6 @@ body {
     transition: transform 240ms var(--rel-ease);
   }
 
-  .rel-app.has-selection .inspector,
-  .rel-app.is-inspector-open .inspector,
-  .rel-app:has(#deleteSelectionButton:not(:disabled)) .inspector,
   .inspector.is-mobile-open {
     transform: translateX(0);
   }
@@ -1980,6 +1920,14 @@ body {
   .save-status__signal {
     width: 8px;
     height: 8px;
+  }
+}
+
+@media (min-width: 821px) and (max-width: 1060px) {
+  .rel-app.has-selection .inspector,
+  .rel-app.is-inspector-open .inspector,
+  .rel-app:has(#deleteSelectionButton:not(:disabled)) .inspector {
+    transform: translateX(0);
   }
 }
 
@@ -2047,7 +1995,7 @@ body {
   .graph-stage {
     width: 100%;
     height: 100%;
-    grid-template-rows: 58px minmax(0, 1fr) 64px;
+    grid-template-rows: 58px minmax(0, 1fr);
   }
 
   .graph-stage__header {
@@ -2110,9 +2058,10 @@ body {
     transform: translateY(0);
   }
 
-  .rel-app.has-selection .inspector,
-  .rel-app.is-inspector-open .inspector,
-  .rel-app:has(#deleteSelectionButton:not(:disabled)) .inspector,
+  .rel-app .inspector:not(.is-mobile-open) {
+    transform: translateY(calc(100% + 88px));
+  }
+
   .inspector.is-mobile-open {
     transform: translateY(0);
   }
@@ -2236,18 +2185,6 @@ body {
     display: none;
   }
 
-  .timeline {
-    grid-template-columns: 46px 76px minmax(80px, 1fr);
-    gap: 8px;
-    min-height: 64px;
-    padding: 7px 11px;
-  }
-
-  .timeline__ticks {
-    right: 11px;
-    left: 142px;
-  }
-
   .a11y-view {
     padding: 16px 12px;
   }
@@ -2320,7 +2257,7 @@ body {
   }
 
   .graph-stage {
-    grid-template-rows: 54px minmax(0, 1fr) 62px;
+    grid-template-rows: 54px minmax(0, 1fr);
   }
 
   .graph-stage__header {
@@ -2442,7 +2379,6 @@ body {
   }
 
   .button--primary,
-  .timeline__play,
   .mobile-dock__primary {
     color: HighlightText !important;
     background: Highlight !important;

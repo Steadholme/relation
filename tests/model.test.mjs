@@ -67,7 +67,7 @@ function makePathDocument() {
       sourceId,
       targetId,
       direction,
-      kind: id === "ca" ? "affection" : "spark",
+      kind: id === "ca" ? "affection" : "dated",
       startedYear: 2020,
       endedYear: null,
       intensity: 3,
@@ -78,31 +78,48 @@ function makePathDocument() {
   return document;
 }
 
-test("默认文档只包含合成中文名字和无性别的合法数据", () => {
+test("默认文档完整映射授权的 RelationWeb data.js 数据", () => {
   const document = createDemoDocument();
   const validation = validateDocument(document);
 
-  assert.deepEqual(RELATION_KINDS, [
-    "partner",
-    "dated",
-    "affection",
-    "spark",
-  ]);
+  assert.deepEqual(RELATION_KINDS, ["partner", "dated", "affection"]);
   assert.equal(validation.valid, true, validation.errors.join("\n"));
-  assert.ok(document.people.length >= 8);
-  assert.ok(document.relationships.length >= 10);
-  assert.match(document.description, /合成/);
+  assert.equal(document.people.length, 116);
+  assert.equal(document.relationships.length, 108);
+  assert.match(document.description, /RelationWeb data\.js/);
+  assert.equal(document.dataPolicy, "authorized-upstream-data");
+  assert.deepEqual(document.source, {
+    repository: "https://github.com/Last-emo-boy/RelationWeb",
+    commit: "ea9b337492572b8cf63bb9c781fb2ecd70937346",
+    path: "data.js",
+    normalization: "reciprocal-partner-edges-canonicalized",
+  });
   assert.equal(new Set(document.people.map(({ name }) => name)).size, document.people.length);
   assert.ok(document.people.every(({ name }) => /\p{Script=Han}/u.test(name)));
-  assert.ok(
-    document.people.every(
-      (person) => !("gender" in person) && !("sex" in person),
-    ),
-  );
+  assert.ok(document.people.every(({ gender }) => gender === "男" || gender === "女"));
   assert.ok(
     document.relationships.every((relationship) =>
       RELATION_KINDS.includes(relationship.kind),
     ),
+  );
+  assert.deepEqual(
+    Object.fromEntries(
+      RELATION_KINDS.map((kind) => [
+        kind,
+        document.relationships.filter((relationship) => relationship.kind === kind).length,
+      ]),
+    ),
+    { partner: 16, dated: 43, affection: 49 },
+  );
+  assert.ok(
+    document.relationships
+      .filter(({ kind }) => kind === "partner" || kind === "dated")
+      .every(({ direction }) => direction === "mutual"),
+  );
+  assert.ok(
+    document.relationships
+      .filter(({ kind }) => kind === "affection")
+      .every(({ direction }) => direction === "directed"),
   );
 });
 
@@ -118,28 +135,16 @@ test("演示文档与深拷贝彼此隔离", () => {
   assert.deepEqual(first, second);
 });
 
-test("时间轴使用包含端点并正确过滤 active relationship", () => {
+test("上游没有年份字段时不虚构年份", () => {
   const document = createDemoDocument();
-  const ended = document.relationships.find(({ id }) => id === "r03");
-  const ongoing = document.relationships.find(({ id }) => id === "r01");
-
-  assert.equal(relationshipIsActive(ended, 2018), false);
-  assert.equal(relationshipIsActive(ended, 2019), true);
-  assert.equal(relationshipIsActive(ended, 2021), true);
-  assert.equal(relationshipIsActive(ended, 2022), false);
-  assert.equal(relationshipIsActive(ongoing, 2026), true);
-
-  assert.deepEqual(
-    filterRelationships(document, { year: 2019 }).map(({ id }) => id),
-    ["r03", "r09"],
-  );
-  assert.deepEqual(
-    filterRelationships(document, { year: 2024, kind: "partner" }).map(
-      ({ id }) => id,
+  assert.ok(
+    document.relationships.every(
+      ({ startedYear, endedYear }) => startedYear === 1 && endedYear === null,
     ),
-    ["r01", "r06"],
   );
-  assert.deepEqual(yearBounds(document, 2028), { min: 2018, max: 2028 });
+  assert.ok(document.relationships.every((relationship) => relationshipIsActive(relationship, 2026)));
+  assert.equal(filterRelationships(document, { year: 2026 }).length, 108);
+  assert.deepEqual(yearBounds(document, 2028), { min: 1, max: 2028 });
 });
 
 test("graphStats 可按时间和可见性生成稳定统计", () => {
@@ -147,7 +152,7 @@ test("graphStats 可按时间和可见性生成稳定统计", () => {
   const stats = graphStats(document, { year: 2024, visibility: "public" });
 
   assert.equal(stats.people, document.people.length);
-  assert.equal(stats.relationships, 7);
+  assert.equal(stats.relationships, 108);
   assert.equal(stats.active, stats.relationships);
   assert.equal(
     Object.values(stats.byKind).reduce((sum, count) => sum + count, 0),
@@ -218,7 +223,8 @@ test("dangling endpoint、自环和非法日期会被明确报告", () => {
   );
 
   const badDate = cloneDocument(createDemoDocument());
-  badDate.relationships[0].endedYear = badDate.relationships[0].startedYear - 1;
+  badDate.relationships[0].startedYear = 2;
+  badDate.relationships[0].endedYear = 1;
   badDate.relationships[1].startedYear = "2020";
   const dateResult = validateDocument(badDate);
   assert.ok(dateResult.errors.some((error) => /earlier than startedYear/.test(error)));
@@ -227,6 +233,24 @@ test("dangling endpoint、自环和非法日期会被明确报告", () => {
     assert.ok(Array.isArray(error.errors));
     return /Invalid relationship document/.test(error.message);
   });
+});
+
+test("createPerson 保留合法 gender 并拒绝未知值", () => {
+  const withGender = createPerson(emptyDocument(), {
+    id: "person-gender",
+    name: "测试人物",
+    gender: "女",
+  });
+  assert.equal(withGender.people[0].gender, "女");
+
+  assert.throws(
+    () => createPerson(emptyDocument(), {
+      id: "person-invalid-gender",
+      name: "测试人物",
+      gender: "其",
+    }),
+    /must be 男 or 女/,
+  );
 });
 
 test("文档规模与字符串长度边界阻止过量本地数据进入图布局", () => {
@@ -346,7 +370,7 @@ test("mutual 关系创建时 canonicalize，反向重复关系仍会被拒绝", 
     id: "first",
     sourceId: "z",
     targetId: "a",
-    kind: "spark",
+    kind: "dated",
     direction: "mutual",
     startedYear: 2024,
     endedYear: null,
@@ -364,7 +388,7 @@ test("mutual 关系创建时 canonicalize，反向重复关系仍会被拒绝", 
         id: "second",
         sourceId: "z",
         targetId: "a",
-        kind: "spark",
+        kind: "dated",
         direction: "mutual",
         startedYear: 2025,
         endedYear: null,
@@ -391,8 +415,8 @@ test("不可变 CRUD 添加实体并在删除人物时级联清理关系", () =>
   const withRelationship = createRelationship(withPerson, {
     id: "r12",
     sourceId: "p10",
-    targetId: "p01",
-    kind: "spark",
+    targetId: "p001",
+    kind: "dated",
     direction: "mutual",
     startedYear: 2026,
     endedYear: null,
@@ -407,9 +431,9 @@ test("不可变 CRUD 添加实体并在删除人物时级联清理关系", () =>
     withRelationship.relationships.find(({ id }) => id === "r12"),
     {
       id: "r12",
-      sourceId: "p01",
+      sourceId: "p001",
       targetId: "p10",
-      kind: "spark",
+      kind: "dated",
       direction: "mutual",
       startedYear: 2026,
       endedYear: null,
@@ -424,9 +448,9 @@ test("不可变 CRUD 添加实体并在删除人物时级联清理关系", () =>
   assert.equal(withoutPerson.relationships.some(({ id }) => id === "r12"), false);
   assert.equal(withRelationship.people.some(({ id }) => id === "p10"), true);
 
-  const withoutRelationship = deleteEntity(original, { type: "relationship", id: "r01" });
-  assert.equal(withoutRelationship.relationships.some(({ id }) => id === "r01"), false);
-  assert.equal(original.relationships.some(({ id }) => id === "r01"), true);
+  const withoutRelationship = deleteEntity(original, { type: "relationship", id: "r001" });
+  assert.equal(withoutRelationship.relationships.some(({ id }) => id === "r001"), false);
+  assert.equal(original.relationships.some(({ id }) => id === "r001"), true);
   assert.throws(() => deleteEntity(original, "missing"), /was not found/);
 });
 
