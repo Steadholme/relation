@@ -1,6 +1,6 @@
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const MIN_SCALE = 0.28;
+const MIN_SCALE = 0.16;
 const MAX_SCALE = 4.5;
 const PARTICLE_ANIMATION_DURATION_MS = 2_400;
 
@@ -157,6 +157,125 @@ function isDirected(relationship) {
     || direction === "oneway"
     || direction === "forward"
     || direction === "source-to-target";
+}
+
+function endpointId(edge, side) {
+  const direct = edge?.[`${side}Id`];
+  if (direct != null) return String(direct);
+  const endpoint = edge?.[side];
+  if (endpoint?.id != null) return String(endpoint.id);
+  if (typeof endpoint === "string" || typeof endpoint === "number") return String(endpoint);
+  return "";
+}
+
+/**
+ * 返回稳定排序的无向连通分量。布局只关心人物之间是否相连，关系方向不影响分群。
+ */
+export function connectedComponents(nodes = [], edges = []) {
+  const ids = [];
+  const adjacency = new Map();
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    const id = node?.id == null ? "" : String(node.id);
+    if (!id || adjacency.has(id)) continue;
+    ids.push(id);
+    adjacency.set(id, new Set());
+  }
+
+  for (const edge of Array.isArray(edges) ? edges : []) {
+    const sourceId = endpointId(edge, "source");
+    const targetId = endpointId(edge, "target");
+    if (!sourceId || !targetId || sourceId === targetId) continue;
+    if (!adjacency.has(sourceId) || !adjacency.has(targetId)) continue;
+    adjacency.get(sourceId).add(targetId);
+    adjacency.get(targetId).add(sourceId);
+  }
+
+  ids.sort((a, b) => a.localeCompare(b));
+  const seen = new Set();
+  const components = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const queue = [id];
+    const component = [];
+    seen.add(id);
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const current = queue[cursor];
+      component.push(current);
+      const neighbors = [...(adjacency.get(current) ?? [])]
+        .sort((a, b) => a.localeCompare(b));
+      for (const neighbor of neighbors) {
+        if (seen.has(neighbor)) continue;
+        seen.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+    component.sort((a, b) => a.localeCompare(b));
+    components.push(component);
+  }
+
+  components.sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]));
+  return components;
+}
+
+/**
+ * 在最大分量周围以径向网格安放其余分量，并保证估算包围圆互不相交。
+ */
+export function radialComponentCenters(
+  components = [],
+  { nodeSpacing = 98, gap = 128 } = {},
+) {
+  const normalized = components
+    .filter((component) => Array.isArray(component) && component.length)
+    .map((ids) => ({
+      ids: [...ids],
+      radius: Math.max(54, nodeSpacing * Math.sqrt(Math.max(0, ids.length - 1)) + 58),
+    }));
+  if (!normalized.length) return [];
+
+  const placed = [];
+  normalized.forEach((component, index) => {
+    if (index === 0) {
+      placed.push({ ...component, x: 0, y: 0 });
+      return;
+    }
+
+    const largestRadius = placed[0].radius;
+    let destination = null;
+    for (let ring = 0; ring < 80 && !destination; ring += 1) {
+      const ringRadius = largestRadius
+        + component.radius
+        + gap
+        + ring * (component.radius * 1.35 + gap * 0.72);
+      const circumference = TAU * ringRadius;
+      const slots = Math.max(
+        8,
+        Math.ceil(circumference / Math.max(96, component.radius * 2 + gap)),
+      );
+      const offset = hashUnit(component.ids[0], 83) * TAU;
+      for (let slot = 0; slot < slots; slot += 1) {
+        const angle = offset + (slot / slots) * TAU;
+        const candidate = {
+          x: Math.cos(angle) * ringRadius,
+          y: Math.sin(angle) * ringRadius * 0.86,
+        };
+        const clear = placed.every((other) => {
+          const distance = Math.hypot(candidate.x - other.x, candidate.y - other.y);
+          return distance >= component.radius + other.radius + gap;
+        });
+        if (clear) {
+          destination = candidate;
+          break;
+        }
+      }
+    }
+
+    placed.push({
+      ...component,
+      x: destination?.x ?? (largestRadius + component.radius + gap) * index,
+      y: destination?.y ?? 0,
+    });
+  });
+  return placed;
 }
 
 export class HeartGraph {
@@ -332,6 +451,7 @@ export class HeartGraph {
     this.nodeById = nextNodeById;
     this.edges = nextEdges;
     this.edgeById = nextEdgeById;
+    this.selection = this.normalizeSelection(this.selection);
     this.rebuildTopology();
     this.computeLayoutTargets();
 
@@ -346,7 +466,6 @@ export class HeartGraph {
       node.isNew = false;
     });
 
-    this.selection = this.normalizeSelection(this.selection);
     this.setPathRelationshipIds(this.pathRelationshipIds);
 
     if (!this.nodes.length) {
@@ -365,10 +484,11 @@ export class HeartGraph {
     if (this.destroyed) return;
     this.selection = this.normalizeSelection(selection);
     this.setPathRelationshipIds(pathRelationshipIds);
+    this.computeLayoutTargets();
     this.particleAnimationUntil = this.selection && !this.motionReduced
       ? this.now() + PARTICLE_ANIMATION_DURATION_MS
       : 0;
-    this.requestDraw();
+    this.wakePhysics(this.motionReduced ? 0.72 : 0.58);
   }
 
   setLayout(mode, focusId = null) {
@@ -549,9 +669,14 @@ export class HeartGraph {
 
     if (this.layoutMode === "heart") {
       const outline = focus ? ordered.filter((node) => node !== focus) : ordered;
-      const scale = clamp(13.5 + Math.sqrt(outline.length) * 1.6, 14, 23);
+      const laneCount = clamp(Math.ceil(outline.length / 40), 1, 4);
       outline.forEach((node, index) => {
-        const t = ((index + 0.5) / Math.max(1, outline.length)) * TAU;
+        const lane = index % laneCount;
+        const laneIndex = Math.floor(index / laneCount);
+        const laneSize = Math.ceil((outline.length - lane) / laneCount);
+        const t = ((laneIndex + 0.5) / Math.max(1, laneSize)) * TAU
+          + lane * 0.035;
+        const scale = 25 + lane * 10.5 + Math.sqrt(outline.length) * 0.16;
         const x = 16 * Math.sin(t) ** 3;
         const y = 13 * Math.cos(t)
           - 5 * Math.cos(2 * t)
@@ -564,6 +689,7 @@ export class HeartGraph {
         focus.targetX = 0;
         focus.targetY = 36;
       }
+      this.applySelectionExpansion();
       return;
     }
 
@@ -606,21 +732,107 @@ export class HeartGraph {
           node.targetY = Math.sin(angle) * radius;
         });
       });
+      this.applySelectionExpansion();
       return;
     }
 
-    const constellation = focus ? ordered.filter((node) => node !== focus) : ordered;
-    constellation.forEach((node, index) => {
-      const ordinal = focus ? index + 1 : index;
-      const radius = ordinal === 0 ? 0 : 68 * Math.sqrt(ordinal);
-      const angle = ordinal * GOLDEN_ANGLE + hashUnit(node.id, 21) * 0.42;
-      node.targetX = Math.cos(angle) * radius;
-      node.targetY = Math.sin(angle) * radius * 0.84;
-    });
+    let components = connectedComponents(this.nodes, this.edges);
     if (focus) {
-      focus.targetX = 0;
-      focus.targetY = 0;
+      components = [...components].sort((a, b) => {
+        const aFocused = a.includes(focus.id) ? 1 : 0;
+        const bFocused = b.includes(focus.id) ? 1 : 0;
+        return bFocused - aFocused || b.length - a.length || a[0].localeCompare(b[0]);
+      });
     }
+
+    radialComponentCenters(components).forEach((placement) => {
+      const componentIds = new Set(placement.ids);
+      const componentNodes = placement.ids
+        .map((id) => this.nodeById.get(id))
+        .filter(Boolean);
+      const root = focus && componentIds.has(focus.id)
+        ? focus
+        : [...componentNodes].sort((a, b) =>
+          b.degree - a.degree || hashString(a.id) - hashString(b.id))[0];
+      const traversal = [];
+      const seen = new Set(root ? [root.id] : []);
+      const queue = root ? [root] : [];
+      for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const node = queue[cursor];
+        traversal.push(node);
+        const neighbors = (this.adjacency.get(node.id) ?? [])
+          .map((edge) => edge.source === node ? edge.target : edge.source)
+          .filter((neighbor) => componentIds.has(neighbor.id) && !seen.has(neighbor.id))
+          .sort((a, b) => b.degree - a.degree || hashString(a.id) - hashString(b.id));
+        for (const neighbor of neighbors) {
+          if (seen.has(neighbor.id)) continue;
+          seen.add(neighbor.id);
+          queue.push(neighbor);
+        }
+      }
+      componentNodes
+        .filter((node) => !seen.has(node.id))
+        .sort((a, b) => b.degree - a.degree || hashString(a.id) - hashString(b.id))
+        .forEach((node) => traversal.push(node));
+
+      traversal.forEach((node, index) => {
+        const radius = index === 0 ? 0 : 98 * Math.sqrt(index);
+        const angle = index * GOLDEN_ANGLE + hashUnit(node.id, 21) * 0.34;
+        node.targetX = placement.x + Math.cos(angle) * radius;
+        node.targetY = placement.y + Math.sin(angle) * radius * 0.86;
+      });
+    });
+    this.applySelectionExpansion();
+  }
+
+  applySelectionExpansion() {
+    if (this.selection?.type !== "person") return;
+    const selected = this.nodeById.get(this.selection.id);
+    if (!selected) return;
+
+    const neighborById = new Map();
+    for (const edge of this.adjacency.get(selected.id) ?? []) {
+      const neighbor = edge.source === selected ? edge.target : edge.source;
+      neighborById.set(neighbor.id, neighbor);
+    }
+    const neighbors = [...neighborById.values()]
+      .sort((a, b) => b.degree - a.degree || hashString(a.id) - hashString(b.id));
+    if (!neighbors.length) return;
+
+    const centerX = selected.targetX;
+    const centerY = selected.targetY;
+    const perRing = 10;
+    const angleOffset = hashUnit(selected.id, 97) * TAU;
+    let outerRadius = 0;
+    neighbors.forEach((neighbor, index) => {
+      const ring = Math.floor(index / perRing);
+      const ringStart = ring * perRing;
+      const ringSize = Math.min(perRing, neighbors.length - ringStart);
+      const radius = 205 + ring * 112 + Math.max(0, ringSize - 5) * 8;
+      const angle = angleOffset + ((index - ringStart) / ringSize) * TAU;
+      neighbor.targetX = centerX + Math.cos(angle) * radius;
+      neighbor.targetY = centerY + Math.sin(angle) * radius;
+      outerRadius = Math.max(outerRadius, radius);
+    });
+
+    const protectedRadius = outerRadius + 76;
+    const neighborIds = new Set(neighbors.map(({ id }) => id));
+    this.nodes.forEach((node) => {
+      if (node === selected || neighborIds.has(node.id)) return;
+      let dx = node.targetX - centerX;
+      let dy = node.targetY - centerY;
+      let distance = Math.hypot(dx, dy);
+      if (distance >= protectedRadius) return;
+      if (distance < 0.001) {
+        const angle = hashUnit(node.id, 99) * TAU;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+        distance = 1;
+      }
+      const destination = protectedRadius + hashUnit(node.id, 100) * 58;
+      node.targetX = centerX + (dx / distance) * destination;
+      node.targetY = centerY + (dy / distance) * destination;
+    });
   }
 
   normalizeSelection(selection) {
@@ -717,7 +929,9 @@ export class HeartGraph {
     }
 
     const alpha = this.alpha;
-    const targetStrength = this.layoutMode === "constellation" ? 0.018 : 0.05;
+    const targetStrength = this.layoutMode === "constellation" ? 0.032 : 0.05;
+    const largeGraph = this.nodes.length >= 64;
+    const springMultiplier = largeGraph ? 0.22 : 1;
 
     this.nodes.forEach((node) => {
       if (node.dragging) return;
@@ -730,8 +944,16 @@ export class HeartGraph {
       const dx = edge.target.x - edge.source.x;
       const dy = edge.target.y - edge.source.y;
       const distance = Math.max(0.001, Math.hypot(dx, dy));
-      const restLength = style.distance - (edge.intensity - 3) * 7;
-      const strength = style.strength * (0.72 + edge.intensity * 0.11) * alpha * dt;
+      const adjacentToSelection = this.selection?.type === "person"
+        && (edge.source.id === this.selection.id || edge.target.id === this.selection.id);
+      const restLength = adjacentToSelection
+        ? Math.max(205, style.distance)
+        : (style.distance - (edge.intensity - 3) * 7) * (largeGraph ? 1.16 : 1);
+      const strength = style.strength
+        * (0.72 + edge.intensity * 0.11)
+        * (adjacentToSelection ? 0.48 : springMultiplier)
+        * alpha
+        * dt;
       const force = (distance - restLength) * strength;
       const forceX = (dx / distance) * force;
       const forceY = (dy / distance) * force;
@@ -746,7 +968,7 @@ export class HeartGraph {
       }
     });
 
-    const cellSize = 190;
+    const cellSize = largeGraph ? 238 : 190;
     const grid = new Map();
     this.nodes.forEach((node, index) => {
       const cellX = Math.floor(node.x / cellSize);
@@ -778,10 +1000,10 @@ export class HeartGraph {
             if (distanceSquared > cellSize * cellSize) continue;
 
             const distance = Math.sqrt(distanceSquared);
-            const collisionDistance = first.radius + second.radius + 20;
-            const repulsion = (760 / (distanceSquared + 80)) * alpha * dt;
+            const collisionDistance = first.radius + second.radius + (largeGraph ? 38 : 24);
+            const repulsion = ((largeGraph ? 1_650 : 840) / (distanceSquared + 80)) * alpha * dt;
             const collision = distance < collisionDistance
-              ? (collisionDistance - distance) * 0.075 * dt
+              ? (collisionDistance - distance) * (largeGraph ? 0.13 : 0.085) * dt
               : 0;
             const force = repulsion + collision;
             const forceX = (dx / distance) * force;
@@ -920,6 +1142,7 @@ export class HeartGraph {
     this.edges.forEach((edge) => this.drawEdge(context, edge));
     if (!this.motionReduced) this.drawParticles(context, timestamp);
     this.nodes.forEach((node) => this.drawNode(context, node, timestamp));
+    this.drawNodeLabels(context);
 
     context.restore();
 
@@ -1014,7 +1237,12 @@ export class HeartGraph {
     const state = this.edgeState(edge);
     const scale = this.view.scale;
     const active = state.selected || state.adjacent || state.path || state.hovered;
-    const alpha = state.muted ? 0.13 : active ? 0.92 : 0.42;
+    const overviewAlpha = this.nodes.length >= 64
+      ? clamp(0.055 + scale * 0.1, 0.075, 0.16)
+      : 0.42;
+    const alpha = state.muted
+      ? (this.nodes.length >= 64 ? 0.03 : 0.13)
+      : active ? 0.92 : overviewAlpha;
     const gradient = context.createLinearGradient(
       geometry.start.x,
       geometry.start.y,
@@ -1042,7 +1270,10 @@ export class HeartGraph {
 
     context.globalAlpha = alpha;
     context.strokeStyle = gradient;
-    context.lineWidth = (style.width + (state.selected || state.path ? 0.8 : 0)) / scale;
+    const overviewWidth = this.nodes.length >= 64 && !active ? 0.72 : 1;
+    context.lineWidth = (
+      style.width * overviewWidth + (state.selected || state.path ? 0.8 : 0)
+    ) / scale;
     context.setLineDash(style.dash.map((value) => value / scale));
 
     traceQuadratic(context, geometry);
@@ -1140,18 +1371,24 @@ export class HeartGraph {
     context.globalAlpha = 1;
   }
 
-  drawNode(context, node, timestamp) {
-    const scale = this.view.scale;
+  nodeState(node) {
     const selected = this.selection?.type === "person" && this.selection.id === node.id;
     const path = this.pathNodeIds.has(node.id);
     const hovered = this.hover?.type === "person" && this.hover.id === node.id;
-    const muted = Boolean(this.selection)
-      && !selected
-      && !path
-      && !(this.selection.type === "relationship"
-        && (this.edgeById.get(this.selection.id)?.source === node
-          || this.edgeById.get(this.selection.id)?.target === node));
-    const active = selected || path || hovered;
+    const adjacent = this.selection?.type === "person"
+      && (this.adjacency.get(this.selection.id) ?? []).some((edge) =>
+        edge.source === node || edge.target === node);
+    const relationshipEndpoint = this.selection?.type === "relationship"
+      && (this.edgeById.get(this.selection.id)?.source === node
+        || this.edgeById.get(this.selection.id)?.target === node);
+    const active = selected || path || hovered || adjacent || relationshipEndpoint;
+    const muted = Boolean(this.selection) && !active;
+    return { selected, path, hovered, adjacent, relationshipEndpoint, active, muted };
+  }
+
+  drawNode(context, node, timestamp) {
+    const scale = this.view.scale;
+    const { selected, active, muted } = this.nodeState(node);
     const pulse = this.motionReduced || !selected ? 1 : 1 + Math.sin(timestamp * 0.0038) * 0.045;
 
     context.save();
@@ -1217,37 +1454,92 @@ export class HeartGraph {
     context.fillText(avatar, 0, 1);
     context.shadowBlur = 0;
     context.restore();
-
-    if (scale >= 0.38 || active) this.drawNodeLabel(context, node, muted, active);
   }
 
-  drawNodeLabel(context, node, muted, active) {
+  drawNodeLabels(context) {
+    const scale = this.view.scale;
+    const largeGraph = this.nodes.length >= 64;
+    const backgroundBudget = !largeGraph
+      ? Number.POSITIVE_INFINITY
+      : scale < 0.4 ? 12
+        : scale < 0.55 ? 20
+          : scale < 0.78 ? 34
+            : scale < 1.1 ? 58 : Number.POSITIVE_INFINITY;
+    const minimumDegree = !largeGraph
+      ? 0
+      : scale < 0.4 ? 4
+        : scale < 0.55 ? 3
+          : scale < 0.78 ? 2 : 1;
+    let backgroundCount = 0;
+    this.labelRects = [];
+
+    const candidates = this.nodes
+      .map((node) => ({ node, state: this.nodeState(node) }))
+      .filter(({ node, state }) => state.active || node.degree >= minimumDegree)
+      .sort((a, b) =>
+        Number(b.state.active) - Number(a.state.active)
+        || b.node.degree - a.node.degree
+        || hashString(a.node.id) - hashString(b.node.id));
+
+    candidates.forEach(({ node, state }) => {
+      if (!state.active && backgroundCount >= backgroundBudget) return;
+      const rendered = this.drawNodeLabel(context, node, state);
+      if (rendered && !state.active) backgroundCount += 1;
+    });
+  }
+
+  drawNodeLabel(context, node, state) {
     const scale = this.view.scale;
     const fontSize = 11.5 / scale;
     const rawLabel = Array.from(node.name);
     const label = rawLabel.length > 22 ? `${rawLabel.slice(0, 21).join("")}…` : node.name;
     context.save();
-    context.font = `${active ? "700" : "600"} ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+    context.font = `${state.active ? "700" : "600"} ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
     const textWidth = context.measureText(label).width;
     const paddingX = 8 / scale;
     const height = 21 / scale;
-    const y = node.y + node.radius + 8 / scale;
-    const x = node.x - textWidth / 2 - paddingX;
+    const width = textWidth + paddingX * 2;
+    const offset = node.radius + 8 / scale;
+    const positions = [
+      { x: node.x - width / 2, y: node.y + offset },
+      { x: node.x - width / 2, y: node.y - offset - height },
+      { x: node.x + offset, y: node.y - height / 2 },
+      { x: node.x - offset - width, y: node.y - height / 2 },
+    ];
+    const gap = 5 / scale;
+    const collides = (box) => this.labelRects.some((other) =>
+      box.x < other.x + other.width + gap
+      && box.x + box.width + gap > other.x
+      && box.y < other.y + other.height + gap
+      && box.y + box.height + gap > other.y);
+    const boxes = positions.map(({ x, y }) => ({ x, y, width, height }));
+    let box = boxes.find((candidate) => !collides(candidate));
+    if (!box && state.active) box = boxes[hashString(node.id) % boxes.length];
+    if (!box) {
+      context.restore();
+      return false;
+    }
+    this.labelRects.push(box);
 
-    roundedRect(context, x, y, textWidth + paddingX * 2, height, 9 / scale);
-    context.globalAlpha = muted ? 0.28 : active ? 0.9 : 0.7;
+    roundedRect(context, box.x, box.y, box.width, box.height, 9 / scale);
+    context.globalAlpha = state.muted ? 0.28 : state.active ? 0.9 : 0.7;
     context.fillStyle = "#100c1c";
     context.fill();
-    context.globalAlpha = muted ? 0.28 : active ? 0.7 : 0.3;
+    context.globalAlpha = state.muted ? 0.28 : state.active ? 0.7 : 0.3;
     context.strokeStyle = node.accent;
     context.lineWidth = 0.9 / scale;
     context.stroke();
-    context.globalAlpha = muted ? 0.38 : 0.96;
+    context.globalAlpha = state.muted ? 0.38 : 0.96;
     context.fillStyle = "#fff8fc";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(label, node.x, y + height / 2 + 0.25 / scale);
+    context.fillText(
+      label,
+      box.x + box.width / 2,
+      box.y + box.height / 2 + 0.25 / scale,
+    );
     context.restore();
+    return true;
   }
 
   drawEmptyFrame() {

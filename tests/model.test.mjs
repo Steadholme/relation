@@ -20,7 +20,11 @@ import {
   validateDocument,
   yearBounds,
 } from "../src/model.mjs";
-import { HeartGraph } from "../src/graph.mjs";
+import {
+  HeartGraph,
+  connectedComponents,
+  radialComponentCenters,
+} from "../src/graph.mjs";
 
 function memoryStorage() {
   const values = new Map();
@@ -183,6 +187,49 @@ test("shortestPath 使用 BFS 取得最少边数并保留对应关系 ID", () =>
   assert.deepEqual(shortestPath(document, "a", "c", { respectDirection: false }), {
     personIds: ["a", "c"],
     relationshipIds: ["ca"],
+  });
+});
+
+test("图布局按无向连通分量稳定分群", () => {
+  const nodes = ["f", "a", "d", "c", "b", "e"].map((id) => ({ id }));
+  const edges = [
+    { sourceId: "a", targetId: "b" },
+    { source: { id: "b" }, target: { id: "c" } },
+    { sourceId: "d", targetId: "e" },
+    { sourceId: "missing", targetId: "a" },
+  ];
+
+  assert.deepEqual(connectedComponents(nodes, edges), [
+    ["a", "b", "c"],
+    ["d", "e"],
+    ["f"],
+  ]);
+  assert.deepEqual(connectedComponents(nodes, edges), connectedComponents(nodes, edges));
+});
+
+test("径向分量中心为每个分群预留不相交包围圆", () => {
+  const gap = 96;
+  const placements = radialComponentCenters([
+    Array.from({ length: 18 }, (_, index) => `main-${index}`),
+    ["side-a", "side-b", "side-c"],
+    ["pair-a", "pair-b"],
+    ["solo"],
+  ], { nodeSpacing: 92, gap });
+
+  assert.equal(placements.length, 4);
+  assert.deepEqual(
+    { x: placements[0].x, y: placements[0].y },
+    { x: 0, y: 0 },
+  );
+  placements.forEach((placement, index) => {
+    assert.ok(Number.isFinite(placement.x));
+    assert.ok(Number.isFinite(placement.y));
+    for (const other of placements.slice(index + 1)) {
+      assert.ok(
+        Math.hypot(placement.x - other.x, placement.y - other.y)
+          >= placement.radius + other.radius + gap,
+      );
+    }
   });
 });
 
