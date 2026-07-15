@@ -7,7 +7,7 @@ ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="Heartlines" \
       org.opencontainers.image.description="Private-by-default dynamic relationship graph for w33d.xyz" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.vendor="HOLDFAST"
+      org.opencontainers.image.vendor="Steadholme"
 
 WORKDIR /app
 
