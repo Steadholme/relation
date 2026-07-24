@@ -21,11 +21,13 @@ const MOTION_KEY = "w33d.relation.motion.v1";
 const HISTORY_LIMIT = 40;
 const mobileMedia = window.matchMedia("(max-width: 820px)");
 const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+const forcedColorsMedia = window.matchMedia("(forced-colors: active)");
+const dialogReturnTargets = new WeakMap();
 
 const KIND_META = Object.freeze({
-  partner: { label: "现任伴侣", short: "PAIR" },
-  dated: { label: "前任伴侣", short: "PAST" },
-  affection: { label: "单向好感", short: "PULSE" },
+  partner: { label: "现任伴侣", short: "CURRENT" },
+  dated: { label: "前任伴侣", short: "FORMER" },
+  affection: { label: "单向好感", short: "AFFECTION" },
 });
 
 const ACCENTS = Object.freeze([
@@ -54,7 +56,7 @@ const requiredIds = [
   "peopleMetric",
   "relationsMetric",
   "componentsMetric",
-  "temperatureMetric",
+  "intensityMetric",
   "allFilter",
   "addPersonButton",
   "addRelationshipButton",
@@ -64,6 +66,7 @@ const requiredIds = [
   "clearPathButton",
   "pathSummary",
   "relationCanvas",
+  "zoomReadout",
   "graphLoading",
   "zoomIn",
   "zoomOut",
@@ -155,6 +158,54 @@ function element(tag, options = {}) {
     }
   }
   return node;
+}
+
+function svgElement(tag, attributes = {}) {
+  const node = window.document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [name, value] of Object.entries(attributes)) {
+    node.setAttribute(name, String(value));
+  }
+  return node;
+}
+
+function relationshipMark(direction, kind) {
+  const directed = direction === "directed";
+  const label = directed ? "单向" : "双向";
+  const mark = element("span", {
+    className: `relation-glyph relation-glyph--${kind}`,
+    attributes: { "aria-label": label },
+  });
+  const svg = svgElement("svg", {
+    "aria-hidden": "true",
+    viewBox: "0 0 56 24",
+  });
+  svg.append(svgElement("path", {
+    class: "relation-glyph__line",
+    d: "M7 12H49",
+  }));
+  if (directed) {
+    svg.append(svgElement("path", {
+      class: "relation-glyph__arrow",
+      d: "m43 7 6 5-6 5",
+    }));
+  } else {
+    svg.append(
+      svgElement("path", {
+        class: "relation-glyph__arrow",
+        d: "m13 7-6 5 6 5",
+      }),
+      svgElement("path", {
+        class: "relation-glyph__arrow",
+        d: "m43 7 6 5-6 5",
+      }),
+    );
+  }
+  mark.append(svg);
+  return mark;
+}
+
+function visibilityLabel(value) {
+  return value === "public" ? "公开标记（仍仅本机）" : "仅此设备";
 }
 
 function personById(id) {
@@ -333,11 +384,7 @@ function setTheme(theme) {
     theme === "dark" ? "切换到浅色主题" : "切换到深色主题",
   );
   safeStorageSet(THEME_KEY, theme);
-  state.graph?.setGraph({
-    people: currentGraphPeople(),
-    relationships: currentRelationships(),
-  });
-  state.graph?.setSelection(state.selection, state.path?.relationshipIds ?? []);
+  state.graph?.setTheme(theme);
 }
 
 function setMotionReduced(reduced, options = {}) {
@@ -438,7 +485,7 @@ function renderMetrics(relationships) {
   dom.componentsMetric.textContent = String(
     countComponents(state.document.people, relationships),
   );
-  dom.temperatureMetric.textContent = `${Math.round(stats.averageIntensity * 20)}°`;
+  dom.intensityMetric.textContent = `${stats.averageIntensity.toFixed(1)} / 5`;
 }
 
 function renderFilters() {
@@ -507,7 +554,7 @@ function renderInspector() {
   dom.deleteSelectionButton.disabled = !state.selection;
 
   if (!state.selection) {
-    dom.inspectorKicker.textContent = "SELECTION / NONE";
+    dom.inspectorKicker.textContent = "ATLAS ENTRY / NONE";
     dom.inspectorTitle.textContent = "选择一颗星";
     const empty = element("div", { className: "selection-empty" });
     const orbit = element("div", { className: "selection-empty__orbit" });
@@ -531,7 +578,7 @@ function renderInspector() {
       return;
     }
     const relationships = relatedForPerson(person.id);
-    dom.inspectorKicker.textContent = `PERSON / ${person.id.toUpperCase()}`;
+    dom.inspectorKicker.textContent = `ATLAS ENTRY / ${person.id.toUpperCase()}`;
     dom.inspectorTitle.textContent = person.name;
 
     const hero = element("section", { className: "inspector-person" });
@@ -544,7 +591,7 @@ function renderInspector() {
     );
     hero.lastElementChild.append(
       element("span", {
-        text: `${person.gender ?? "未知"} · ${person.visibility === "public" ? "可公开" : "仅此设备"}`,
+        text: `${person.gender ?? "未知"} · ${visibilityLabel(person.visibility)}`,
       }),
       element("strong", {
         text: `${relationships.length} 条当前关系线`,
@@ -591,17 +638,13 @@ function renderInspector() {
     renderInspector();
     return;
   }
-  dom.inspectorKicker.textContent = `HEARTLINE / ${relationship.id.toUpperCase()}`;
+  dom.inspectorKicker.textContent = `ATLAS ENTRY / ${relationship.id.toUpperCase()}`;
   dom.inspectorTitle.textContent = KIND_META[relationship.kind].label;
 
   const pairing = element("section", { className: "inspector-pairing" });
   pairing.append(
     element("strong", { text: displayName(relationship.sourceId) }),
-    element("span", {
-      className: `relation-glyph relation-glyph--${relationship.kind}`,
-      text: relationship.direction === "directed" ? "→" : "↔",
-      attributes: { "aria-label": relationship.direction === "directed" ? "单向" : "双向" },
-    }),
+    relationshipMark(relationship.direction, relationship.kind),
     element("strong", { text: displayName(relationship.targetId) }),
   );
   body.append(pairing);
@@ -609,7 +652,7 @@ function renderInspector() {
   details.append(
     infoRow("方向", relationship.direction === "directed" ? "单向" : "双向"),
     infoRow("强度", `${relationship.intensity} / 5`),
-    infoRow("可见性", relationship.visibility === "public" ? "可公开" : "仅此设备"),
+    infoRow("可见性", visibilityLabel(relationship.visibility)),
   );
   body.append(details);
   if (relationship.note) {
@@ -646,7 +689,7 @@ function entityListItem(button) {
 function renderEntityLists() {
   const relationships = currentRelationships();
   const components = countComponents(state.document.people, relationships);
-  dom.graphSummary.textContent = `${state.document.people.length} 个人物，${relationships.length} 条关系，${components} 个星群。`;
+  dom.graphSummary.textContent = `公开底图与本地草稿：${state.document.people.length} 个人物，${relationships.length} 条关系，${components} 个连通星群。`;
   dom.peopleList.replaceChildren(
     ...state.document.people.map((person) =>
       entityListItem(
@@ -663,8 +706,8 @@ function renderEntityLists() {
     ...relationships.map((relationship) =>
       entityListItem(
         entityButton(
-          `${displayName(relationship.sourceId)} ${relationship.direction === "directed" ? "→" : "↔"} ${displayName(relationship.targetId)}`,
-          KIND_META[relationship.kind]?.label ?? relationship.kind,
+          `${displayName(relationship.sourceId)}${relationship.direction === "directed" ? "指向" : "互连"}${displayName(relationship.targetId)}`,
+          `${KIND_META[relationship.kind]?.label ?? relationship.kind} · 强度 ${relationship.intensity} / 5 · ${relationship.direction === "directed" ? "单向" : "双向"}`,
           { relationshipId: relationship.id },
           state.selection?.type === "relationship" && state.selection.id === relationship.id,
         ),
@@ -847,6 +890,33 @@ function randomAccent() {
   return ACCENTS[state.document.people.length % ACCENTS.length];
 }
 
+function showDialog(dialog, initialFocus) {
+  const returnTarget = window.document.activeElement;
+  if (
+    returnTarget instanceof HTMLElement
+    && returnTarget !== window.document.body
+    && returnTarget !== window.document.documentElement
+  ) {
+    dialogReturnTargets.set(dialog, returnTarget);
+  } else {
+    dialogReturnTargets.delete(dialog);
+  }
+  dialog.showModal();
+  window.requestAnimationFrame(() => initialFocus.focus());
+}
+
+function restoreDialogFocus(dialog) {
+  const returnTarget = dialogReturnTargets.get(dialog);
+  dialogReturnTargets.delete(dialog);
+  if (
+    returnTarget instanceof HTMLElement
+    && returnTarget.isConnected
+    && !returnTarget.closest("[inert]")
+  ) {
+    window.requestAnimationFrame(() => returnTarget.focus());
+  }
+}
+
 function openPersonDialog(personId = null) {
   setMode("studio");
   dom.personForm.reset();
@@ -868,8 +938,7 @@ function openPersonDialog(personId = null) {
     dom.personAccent.value = randomAccent();
     dom.personVisibility.value = "private";
   }
-  dom.personDialog.showModal();
-  window.requestAnimationFrame(() => dom.personName.focus());
+  showDialog(dom.personDialog, dom.personName);
 }
 
 function openRelationshipDialog(relationshipId = null, sourceId = null) {
@@ -891,7 +960,7 @@ function openRelationshipDialog(relationshipId = null, sourceId = null) {
     dom.relationshipTarget.value = relationship.targetId;
     dom.relationshipKind.value = relationship.kind;
     dom.relationshipDirection.value = relationship.direction;
-    dom.relationshipIntensity.value = String(relationship.intensity * 20);
+    dom.relationshipIntensity.value = String(relationship.intensity);
     dom.relationshipNote.value = relationship.note;
     dom.relationshipVisibility.value = relationship.visibility;
   } else {
@@ -900,17 +969,16 @@ function openRelationshipDialog(relationshipId = null, sourceId = null) {
     dom.relationshipSource.value = sourceId ?? "";
     dom.relationshipKind.value = "partner";
     dom.relationshipDirection.value = "mutual";
-    dom.relationshipIntensity.value = "60";
+    dom.relationshipIntensity.value = "3";
     dom.relationshipVisibility.value = "private";
   }
   updateIntensityOutput();
-  dom.relationshipDialog.showModal();
-  window.requestAnimationFrame(() => dom.relationshipSource.focus());
+  showDialog(dom.relationshipDialog, dom.relationshipSource);
 }
 
 function updateIntensityOutput() {
   const output = dom.relationshipIntensity.closest("label")?.querySelector("output");
-  if (output) output.textContent = `${dom.relationshipIntensity.value}%`;
+  if (output) output.textContent = `${dom.relationshipIntensity.value} / 5`;
 }
 
 function submitPerson(event) {
@@ -964,7 +1032,7 @@ function relationshipInputFromForm(id = undefined) {
     ...(id ? { id } : {}),
     direction,
     endedYear: null,
-    intensity: Math.max(1, Math.min(5, Math.round(Number(dom.relationshipIntensity.value) / 20))),
+    intensity: Math.max(1, Math.min(5, Math.round(Number(dom.relationshipIntensity.value)))),
     kind: dom.relationshipKind.value,
     note: dom.relationshipNote.value.trim(),
     sourceId,
@@ -1205,6 +1273,10 @@ function bindEvents() {
   dom.relationshipForm.addEventListener("submit", submitRelationship);
   dom.closePersonDialog.addEventListener("click", () => dom.personDialog.close());
   dom.closeRelationshipDialog.addEventListener("click", () => dom.relationshipDialog.close());
+  dom.personDialog.addEventListener("close", () => restoreDialogFocus(dom.personDialog));
+  dom.relationshipDialog.addEventListener("close", () =>
+    restoreDialogFocus(dom.relationshipDialog),
+  );
   for (const button of window.document.querySelectorAll("[data-dialog-cancel]")) {
     button.addEventListener("click", () => button.closest("dialog").close());
   }
@@ -1277,6 +1349,9 @@ function bindEvents() {
   motionMedia.addEventListener?.("change", (event) => {
     if (state.motionFollowsSystem) setMotionReduced(event.matches, { persist: false });
   });
+  forcedColorsMedia.addEventListener?.("change", (event) => {
+    if (event.matches) setView("list");
+  });
 }
 
 function boot() {
@@ -1301,6 +1376,9 @@ function boot() {
 
   state.graph = new HeartGraph(dom.relationCanvas, {
     onSelect: (selection) => setSelection(selection, { focus: false }),
+    onViewChange: ({ scale }) => {
+      dom.zoomReadout.textContent = `ZOOM / ${Math.round(scale * 100)}%`;
+    },
   });
   state.graph.setMotionReduced(state.motionReduced);
   bindEvents();
@@ -1315,7 +1393,7 @@ function boot() {
     loadWarning = "浏览器存储不可用；为避免丢失，编辑功能会保持事务性关闭";
   }
 
-  if (window.matchMedia("(forced-colors: active)").matches) setView("list");
+  if (forcedColorsMedia.matches) setView("list");
   else setView("graph");
 
   window.requestAnimationFrame(() => {

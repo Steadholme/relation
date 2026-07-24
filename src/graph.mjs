@@ -29,6 +29,35 @@ const RELATION_LABELS = Object.freeze({
   default: "关系",
 });
 
+const ATLAS_PALETTES = Object.freeze({
+  dark: Object.freeze({
+    background: "#0b100e",
+    grid: "rgba(232, 226, 209, 0.075)",
+    gridStrong: "rgba(232, 226, 209, 0.16)",
+    ink: "#f0eadc",
+    label: "#111714",
+    muted: "#a59f91",
+    panel: "#151b18",
+    rule: "#596057",
+    partner: "#e87352",
+    dated: "#67bfb4",
+    affection: "#d7ad62",
+  }),
+  light: Object.freeze({
+    background: "#e9e4d8",
+    grid: "rgba(34, 39, 34, 0.09)",
+    gridStrong: "rgba(34, 39, 34, 0.2)",
+    ink: "#1c211d",
+    label: "#f5f0e5",
+    muted: "#62685f",
+    panel: "#f7f2e7",
+    rule: "#777c72",
+    partner: "#a9412c",
+    dated: "#1f726b",
+    affection: "#865c12",
+  }),
+});
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -279,7 +308,7 @@ export function radialComponentCenters(
 }
 
 export class HeartGraph {
-  constructor(canvas, { onSelect, onHover } = {}) {
+  constructor(canvas, { onSelect, onHover, onViewChange } = {}) {
     if (!canvas || typeof canvas.getContext !== "function") {
       throw new TypeError("HeartGraph requires a canvas element");
     }
@@ -293,6 +322,7 @@ export class HeartGraph {
     this.window = this.document?.defaultView ?? globalThis;
     this.onSelect = typeof onSelect === "function" ? onSelect : null;
     this.onHover = typeof onHover === "function" ? onHover : null;
+    this.onViewChange = typeof onViewChange === "function" ? onViewChange : null;
 
     this.nodes = [];
     this.nodeById = new Map();
@@ -310,6 +340,7 @@ export class HeartGraph {
     this.physicsActive = false;
     this.stableFrames = 0;
     this.motionReduced = false;
+    this.theme = "dark";
     this.particleAnimationUntil = 0;
 
     this.width = 1;
@@ -373,6 +404,19 @@ export class HeartGraph {
 
   now() {
     return this.window.performance?.now?.() ?? Date.now();
+  }
+
+  palette() {
+    return ATLAS_PALETTES[this.theme] ?? ATLAS_PALETTES.dark;
+  }
+
+  relationColor(kind) {
+    const palette = this.palette();
+    return palette[kind] ?? palette.rule;
+  }
+
+  emitView() {
+    this.onViewChange?.({ ...this.view });
   }
 
   setGraph({ people = [], relationships = [] } = {}) {
@@ -521,6 +565,17 @@ export class HeartGraph {
     }
   }
 
+  setTheme(theme) {
+    if (this.destroyed) return;
+    const next = theme === "light" ? "light" : "dark";
+    if (next === this.theme) {
+      this.requestDraw();
+      return;
+    }
+    this.theme = next;
+    this.requestDraw();
+  }
+
   focusPerson(id) {
     if (this.destroyed) return false;
     const node = this.nodeById.get(String(id));
@@ -536,6 +591,7 @@ export class HeartGraph {
     if (this.motionReduced) {
       this.view = destination;
       this.cameraAnimation = null;
+      this.emitView();
     } else {
       this.cameraAnimation = {
         from: { ...this.view },
@@ -554,6 +610,7 @@ export class HeartGraph {
 
     if (!this.nodes.length) {
       this.view = { x: this.width / 2, y: this.height / 2, scale: 1 };
+      this.emitView();
       this.requestDraw();
       return;
     }
@@ -587,6 +644,7 @@ export class HeartGraph {
       y: this.height / 2 - centerY * scale,
       scale,
     };
+    this.emitView();
     this.requestDraw();
   }
 
@@ -1150,83 +1208,64 @@ export class HeartGraph {
   }
 
   drawBackground(context) {
-    const base = context.createLinearGradient(0, 0, this.width, this.height);
-    base.addColorStop(0, "#090817");
-    base.addColorStop(0.48, "#120b23");
-    base.addColorStop(1, "#070914");
-    context.fillStyle = base;
+    const palette = this.palette();
+    context.fillStyle = palette.background;
     context.fillRect(0, 0, this.width, this.height);
 
-    const rose = context.createRadialGradient(
-      this.width * 0.23,
-      this.height * 0.23,
-      0,
-      this.width * 0.23,
-      this.height * 0.23,
-      Math.max(this.width, this.height) * 0.72,
-    );
-    rose.addColorStop(0, "rgba(255, 63, 141, 0.16)");
-    rose.addColorStop(0.48, "rgba(150, 73, 255, 0.055)");
-    rose.addColorStop(1, "rgba(0, 0, 0, 0)");
-    context.fillStyle = rose;
-    context.fillRect(0, 0, this.width, this.height);
-
-    const cyan = context.createRadialGradient(
-      this.width * 0.86,
-      this.height * 0.76,
-      0,
-      this.width * 0.86,
-      this.height * 0.76,
-      Math.max(this.width, this.height) * 0.56,
-    );
-    cyan.addColorStop(0, "rgba(67, 216, 228, 0.085)");
-    cyan.addColorStop(1, "rgba(0, 0, 0, 0)");
-    context.fillStyle = cyan;
-    context.fillRect(0, 0, this.width, this.height);
-
-    const starCount = Math.min(110, Math.floor((this.width * this.height) / 10500));
-    context.fillStyle = "#ffffff";
-    for (let index = 0; index < starCount; index += 1) {
-      const x = hashUnit(index, 41) * this.width;
-      const y = hashUnit(index, 42) * this.height;
-      const radius = 0.35 + hashUnit(index, 43) * 0.9;
-      context.globalAlpha = 0.1 + hashUnit(index, 44) * 0.35;
+    context.save();
+    context.lineWidth = 1;
+    for (let x = 0.5; x < this.width; x += 48) {
+      context.strokeStyle = x % 192 === 0.5 ? palette.gridStrong : palette.grid;
       context.beginPath();
-      context.arc(x, y, radius, 0, TAU);
-      context.fill();
+      context.moveTo(x, 0);
+      context.lineTo(x, this.height);
+      context.stroke();
     }
-    context.globalAlpha = 1;
+    for (let y = 0.5; y < this.height; y += 48) {
+      context.strokeStyle = y % 192 === 0.5 ? palette.gridStrong : palette.grid;
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(this.width, y);
+      context.stroke();
+    }
 
-    const vignette = context.createRadialGradient(
-      this.width / 2,
-      this.height / 2,
-      Math.min(this.width, this.height) * 0.15,
-      this.width / 2,
-      this.height / 2,
-      Math.max(this.width, this.height) * 0.72,
-    );
-    vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
-    vignette.addColorStop(1, "rgba(0, 0, 0, 0.38)");
-    context.fillStyle = vignette;
-    context.fillRect(0, 0, this.width, this.height);
+    context.strokeStyle = palette.gridStrong;
+    context.strokeRect(16.5, 16.5, Math.max(0, this.width - 33), Math.max(0, this.height - 33));
+    const mark = 18;
+    const inset = 16.5;
+    const farX = this.width - inset;
+    const farY = this.height - inset;
+    for (const [x, y, horizontal, vertical] of [
+      [inset, inset, 1, 1],
+      [farX, inset, -1, 1],
+      [inset, farY, 1, -1],
+      [farX, farY, -1, -1],
+    ]) {
+      context.beginPath();
+      context.moveTo(x, y + vertical * mark);
+      context.lineTo(x, y);
+      context.lineTo(x + horizontal * mark, y);
+      context.stroke();
+    }
+    context.restore();
   }
 
   drawEmptyState(context) {
+    const palette = this.palette();
     const size = clamp(Math.min(this.width, this.height) * 0.13, 34, 74);
     const centerX = this.width / 2;
     const centerY = this.height / 2;
     context.save();
     context.translate(centerX, centerY);
     context.scale(size / 32, size / 32);
+    context.strokeStyle = palette.rule;
+    context.lineWidth = 1;
+    context.strokeRect(-22, -16, 44, 32);
     context.beginPath();
-    context.moveTo(0, 13);
-    context.bezierCurveTo(-28, -3, -18, -25, 0, -12);
-    context.bezierCurveTo(18, -25, 28, -3, 0, 13);
-    context.closePath();
-    context.strokeStyle = "rgba(255, 124, 176, 0.52)";
-    context.lineWidth = 1.2;
-    context.shadowColor = "#ff4f9a";
-    context.shadowBlur = 12;
+    context.moveTo(-16, 10);
+    context.lineTo(-5, -4);
+    context.lineTo(5, 4);
+    context.lineTo(16, -10);
     context.stroke();
     context.restore();
   }
@@ -1236,51 +1275,40 @@ export class HeartGraph {
     const style = RELATION_STYLES[edge.kind] ?? RELATION_STYLES.default;
     const state = this.edgeState(edge);
     const scale = this.view.scale;
+    const color = this.relationColor(edge.kind);
     const active = state.selected || state.adjacent || state.path || state.hovered;
     const overviewAlpha = this.nodes.length >= 64
-      ? clamp(0.055 + scale * 0.1, 0.075, 0.16)
-      : 0.42;
+      ? clamp(0.12 + scale * 0.12, 0.14, 0.32)
+      : 0.58;
     const alpha = state.muted
-      ? (this.nodes.length >= 64 ? 0.03 : 0.13)
-      : active ? 0.92 : overviewAlpha;
-    const gradient = context.createLinearGradient(
-      geometry.start.x,
-      geometry.start.y,
-      geometry.end.x,
-      geometry.end.y,
-    );
-    gradient.addColorStop(0, edge.source.accent);
-    gradient.addColorStop(1, edge.target.accent);
+      ? (this.nodes.length >= 64 ? 0.06 : 0.16)
+      : active ? 1 : overviewAlpha;
+    const intensityWidth = 0.72 + edge.intensity * 0.38;
 
     context.save();
-    context.lineCap = edge.kind === "affection" ? "round" : "round";
-    context.lineJoin = "round";
+    context.lineCap = edge.kind === "affection" ? "round" : "butt";
+    context.lineJoin = "miter";
 
     if (active) {
-      context.globalAlpha = state.selected || state.path ? 0.34 : 0.2;
-      context.strokeStyle = gradient;
-      context.lineWidth = (state.selected || state.path ? 12 : 8) / scale;
-      context.shadowColor = edge.target.accent;
-      context.shadowBlur = 18 / scale;
+      context.globalAlpha = state.selected || state.path ? 0.34 : 0.22;
+      context.strokeStyle = color;
+      context.lineWidth = (intensityWidth + (state.selected || state.path ? 4 : 2.5)) / scale;
       context.setLineDash([]);
       traceQuadratic(context, geometry);
       context.stroke();
-      context.shadowBlur = 0;
     }
 
     context.globalAlpha = alpha;
-    context.strokeStyle = gradient;
-    const overviewWidth = this.nodes.length >= 64 && !active ? 0.72 : 1;
-    context.lineWidth = (
-      style.width * overviewWidth + (state.selected || state.path ? 0.8 : 0)
-    ) / scale;
+    context.strokeStyle = color;
+    const overviewWidth = this.nodes.length >= 64 && !active ? 0.78 : 1;
+    context.lineWidth = (intensityWidth * overviewWidth) / scale;
     context.setLineDash(style.dash.map((value) => value / scale));
 
     traceQuadratic(context, geometry);
     context.stroke();
 
     context.setLineDash([]);
-    if (edge.directed) this.drawArrow(context, geometry, edge.target.accent, alpha);
+    if (edge.directed) this.drawArrow(context, geometry, color, alpha);
     if (active) this.drawEdgeBadge(context, edge, geometry, state);
     context.restore();
   }
@@ -1303,34 +1331,32 @@ export class HeartGraph {
     context.closePath();
     context.globalAlpha = Math.max(alpha, 0.62);
     context.fillStyle = color;
-    context.shadowColor = color;
-    context.shadowBlur = 8 / this.view.scale;
     context.fill();
-    context.shadowBlur = 0;
   }
 
   drawEdgeBadge(context, edge, geometry, state) {
     const point = pointOnQuadratic(geometry, 0.5);
     const scale = this.view.scale;
-    const label = RELATION_LABELS[edge.kind] ?? RELATION_LABELS.default;
+    const palette = this.palette();
+    const label = `${RELATION_LABELS[edge.kind] ?? RELATION_LABELS.default} · ${edge.intensity}/5`;
     const fontSize = 10.5 / scale;
     context.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
     const textWidth = context.measureText(label).width;
-    const width = textWidth + 14 / scale;
-    const height = 20 / scale;
+    const width = textWidth + 16 / scale;
+    const height = 22 / scale;
     const x = point.x - width / 2;
     const y = point.y - height / 2;
 
-    roundedRect(context, x, y, width, height, 9 / scale);
-    context.globalAlpha = state.selected || state.path ? 0.88 : 0.68;
-    context.fillStyle = "#171126";
+    roundedRect(context, x, y, width, height, 2 / scale);
+    context.globalAlpha = state.selected || state.path ? 0.96 : 0.82;
+    context.fillStyle = palette.panel;
     context.fill();
-    context.globalAlpha = 0.82;
-    context.strokeStyle = edge.target.accent;
+    context.globalAlpha = 0.96;
+    context.strokeStyle = this.relationColor(edge.kind);
     context.lineWidth = 1 / scale;
     context.stroke();
-    context.globalAlpha = 0.92;
-    context.fillStyle = "#fff7fb";
+    context.globalAlpha = 1;
+    context.fillStyle = palette.ink;
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(label, point.x, point.y + 0.25 / scale);
@@ -1349,22 +1375,11 @@ export class HeartGraph {
         const offset = hashUnit(edge.id, 61 + index);
         const t = (timestamp * speed + index / count + offset) % 1;
         const point = pointOnQuadratic(geometry, t);
-        const radius = (index === 0 ? 2.8 : 1.9) / scale;
-        const gradient = context.createRadialGradient(
-          point.x,
-          point.y,
-          0,
-          point.x,
-          point.y,
-          radius * 3.4,
-        );
-        gradient.addColorStop(0, "rgba(255,255,255,0.98)");
-        gradient.addColorStop(0.28, edge.target.accent);
-        gradient.addColorStop(1, "rgba(255,255,255,0)");
-        context.fillStyle = gradient;
-        context.globalAlpha = 0.88;
+        const radius = (index === 0 ? 2.2 : 1.4) / scale;
+        context.fillStyle = this.relationColor(edge.kind);
+        context.globalAlpha = 0.9;
         context.beginPath();
-        context.arc(point.x, point.y, radius * 3.4, 0, TAU);
+        context.rect(point.x - radius, point.y - radius, radius * 2, radius * 2);
         context.fill();
       }
     });
@@ -1388,71 +1403,57 @@ export class HeartGraph {
 
   drawNode(context, node, timestamp) {
     const scale = this.view.scale;
+    const palette = this.palette();
     const { selected, active, muted } = this.nodeState(node);
-    const pulse = this.motionReduced || !selected ? 1 : 1 + Math.sin(timestamp * 0.0038) * 0.045;
 
     context.save();
     context.translate(node.x, node.y);
-    context.scale(pulse, pulse);
     context.globalAlpha = muted ? 0.34 : 1;
 
     if (active) {
-      const haloRadius = node.radius + (selected ? 17 : 12) / scale;
-      const halo = context.createRadialGradient(0, 0, node.radius * 0.55, 0, 0, haloRadius);
-      halo.addColorStop(0, node.accent);
-      halo.addColorStop(1, "rgba(255,255,255,0)");
-      context.globalAlpha = selected ? 0.28 : 0.18;
-      context.fillStyle = halo;
+      const outerRadius = node.radius + (selected ? 8 : 5) / scale;
+      context.globalAlpha = muted ? 0.34 : 0.92;
+      context.strokeStyle = node.accent;
+      context.lineWidth = (selected ? 2 : 1) / scale;
+      context.setLineDash(selected ? [] : [3 / scale, 3 / scale]);
       context.beginPath();
-      context.arc(0, 0, haloRadius, 0, TAU);
-      context.fill();
+      context.arc(0, 0, outerRadius, 0, TAU);
+      context.stroke();
+      context.setLineDash([]);
       context.globalAlpha = muted ? 0.34 : 1;
     }
 
-    const face = context.createRadialGradient(
-      -node.radius * 0.34,
-      -node.radius * 0.38,
-      node.radius * 0.08,
-      0,
-      0,
-      node.radius * 1.1,
-    );
-    face.addColorStop(0, node.accent);
-    face.addColorStop(0.38, "#2a1b39");
-    face.addColorStop(1, "#100d1c");
-    context.fillStyle = face;
-    context.shadowColor = active ? node.accent : "rgba(255, 77, 150, 0.26)";
-    context.shadowBlur = (active ? 20 : 9) / scale;
+    context.fillStyle = palette.panel;
     context.beginPath();
     context.arc(0, 0, node.radius, 0, TAU);
     context.fill();
-    context.shadowBlur = 0;
 
-    const ring = context.createLinearGradient(-node.radius, -node.radius, node.radius, node.radius);
-    ring.addColorStop(0, "rgba(255,255,255,0.86)");
-    ring.addColorStop(0.38, node.accent);
-    ring.addColorStop(1, "rgba(255,255,255,0.2)");
-    context.strokeStyle = ring;
+    context.strokeStyle = node.accent;
     context.lineWidth = (active ? 2.3 : 1.35) / scale;
     context.beginPath();
     context.arc(0, 0, node.radius, 0, TAU);
     context.stroke();
 
     context.beginPath();
-    context.arc(-node.radius * 0.31, -node.radius * 0.34, node.radius * 0.13, 0, TAU);
-    context.fillStyle = "rgba(255,255,255,0.36)";
-    context.fill();
+    context.moveTo(-node.radius - 4 / scale, 0);
+    context.lineTo(-node.radius + 3 / scale, 0);
+    context.moveTo(node.radius - 3 / scale, 0);
+    context.lineTo(node.radius + 4 / scale, 0);
+    context.moveTo(0, -node.radius - 4 / scale);
+    context.lineTo(0, -node.radius + 3 / scale);
+    context.moveTo(0, node.radius - 3 / scale);
+    context.lineTo(0, node.radius + 4 / scale);
+    context.lineWidth = 1 / scale;
+    context.strokeStyle = palette.rule;
+    context.stroke();
 
     const avatar = node.emoji || initials(node.name);
     const avatarSize = node.emoji ? node.radius * 0.92 : node.radius * 0.68;
     context.font = `${node.emoji ? "400" : "700"} ${avatarSize}px ui-sans-serif, system-ui, sans-serif`;
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillStyle = "#fffafc";
-    context.shadowColor = "rgba(0,0,0,0.65)";
-    context.shadowBlur = 4 / scale;
+    context.fillStyle = palette.ink;
     context.fillText(avatar, 0, 1);
-    context.shadowBlur = 0;
     context.restore();
   }
 
@@ -1490,6 +1491,7 @@ export class HeartGraph {
 
   drawNodeLabel(context, node, state) {
     const scale = this.view.scale;
+    const palette = this.palette();
     const fontSize = 11.5 / scale;
     const rawLabel = Array.from(node.name);
     const label = rawLabel.length > 22 ? `${rawLabel.slice(0, 21).join("")}…` : node.name;
@@ -1521,16 +1523,16 @@ export class HeartGraph {
     }
     this.labelRects.push(box);
 
-    roundedRect(context, box.x, box.y, box.width, box.height, 9 / scale);
-    context.globalAlpha = state.muted ? 0.28 : state.active ? 0.9 : 0.7;
-    context.fillStyle = "#100c1c";
+    roundedRect(context, box.x, box.y, box.width, box.height, 2 / scale);
+    context.globalAlpha = state.muted ? 0.28 : state.active ? 0.96 : 0.84;
+    context.fillStyle = palette.label;
     context.fill();
     context.globalAlpha = state.muted ? 0.28 : state.active ? 0.7 : 0.3;
     context.strokeStyle = node.accent;
     context.lineWidth = 0.9 / scale;
     context.stroke();
-    context.globalAlpha = state.muted ? 0.38 : 0.96;
-    context.fillStyle = "#fff8fc";
+    context.globalAlpha = state.muted ? 0.38 : 1;
+    context.fillStyle = palette.ink;
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(
@@ -1587,6 +1589,7 @@ export class HeartGraph {
       y: animation.from.y + (animation.to.y - animation.from.y) * eased,
       scale: animation.from.scale + (animation.to.scale - animation.from.scale) * eased,
     };
+    this.emitView();
     if (progress >= 1) this.cameraAnimation = null;
   }
 
@@ -1837,6 +1840,7 @@ export class HeartGraph {
     this.view.x = screenX - worldX * nextScale;
     this.view.y = screenY - worldY * nextScale;
     this.cameraAnimation = null;
+    this.emitView();
     this.requestDraw();
   }
 }
