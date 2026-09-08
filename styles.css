@@ -11,8 +11,10 @@
   --rel-faint: var(--ody-ink-4, #747b72);
   --rel-rule: var(--ody-border, #303a34);
   --rel-rule-strong: var(--ody-border-2, #465249);
-  --rel-accent: var(--ody-accent, #e87352);
-  --rel-accent-strong: var(--ody-accent-2, #ff8d6c);
+  /* The atlas carries its own coral. Odyssey's accent is the estate oxide, which
+     is close enough to look like a mistake and far enough to miss the plate. */
+  --rel-accent: #e87352;
+  --rel-accent-strong: #ff8d6c;
   --rel-accent-soft: var(--ody-accent-soft, #35211c);
   --rel-focus: var(--ody-accent-ink, #ffad95);
   --rel-ring: var(--ody-ring, rgb(232 115 82 / 0.38));
@@ -1867,6 +1869,9 @@ body {
   --rel-rule-strong: var(--ody-border-2, #aaa69a);
   --rel-shadow: 4px 4px 0 rgb(44 47 41 / .18);
   --rel-grid: rgb(29 33 29 / .07);
+  --rel-accent: #c4522e;
+  --rel-accent-strong: #a8431f;
+  --rel-partner: #c4522e;
   color-scheme: light;
 }
 
