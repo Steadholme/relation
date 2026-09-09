@@ -32,8 +32,8 @@ const RELATION_LABELS = Object.freeze({
 const ATLAS_PALETTES = Object.freeze({
   dark: Object.freeze({
     background: "#0b100e",
-    grid: "rgba(232, 226, 209, 0.075)",
-    gridStrong: "rgba(232, 226, 209, 0.16)",
+    grid: "rgba(232, 226, 209, 0.030)",
+    gridStrong: "rgba(232, 226, 209, 0.070)",
     ink: "#f0eadc",
     label: "#111714",
     muted: "#a59f91",
@@ -249,9 +249,16 @@ export function connectedComponents(nodes = [], edges = []) {
 /**
  * 在最大分量周围以径向网格安放其余分量，并保证估算包围圆互不相交。
  */
+/*
+ * Packing defaults. The previous pair (98 / 128) flung the fifteen small
+ * components far out around the one large cluster, so the plate's bounding box
+ * was enormous: the fit landed on the zoom floor (16%) and the chart read as a
+ * dense knot adrift in empty sky. A star chart should fill its plate with
+ * legible stars, so the components pack closer and the fit can zoom in.
+ */
 export function radialComponentCenters(
   components = [],
-  { nodeSpacing = 98, gap = 128 } = {},
+  { nodeSpacing = 74, gap = 58 } = {},
 ) {
   const normalized = components
     .filter((component) => Array.isArray(component) && component.length)
@@ -345,6 +352,7 @@ export class HeartGraph {
 
     this.width = 1;
     this.height = 1;
+    this.fitPending = false;
     this.dpr = 1;
     this.view = { x: 0.5, y: 0.5, scale: 1 };
     this.viewInitialized = false;
@@ -608,6 +616,17 @@ export class HeartGraph {
     if (this.destroyed) return;
     this.cameraAnimation = null;
 
+    // The canvas starts at 1x1 and is measured by the ResizeObserver a frame
+    // later, so a fit requested during boot divided the world extent by one
+    // pixel and clamped to MIN_SCALE. That floored view was then never
+    // recomputed, which is why the chart always opened as a tiny knot at 16%.
+    // Defer instead, and let the first real measurement run it.
+    if (this.width <= 1 || this.height <= 1) {
+      this.fitPending = true;
+      return;
+    }
+    this.fitPending = false;
+
     if (!this.nodes.length) {
       this.view = { x: this.width / 2, y: this.height / 2, scale: 1 };
       this.emitView();
@@ -615,17 +634,31 @@ export class HeartGraph {
       return;
     }
 
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
+    // Frame the field of interest, not the extremes. Fitting to absolute
+    // min/max let a couple of far-flung two-person components dictate the
+    // frame: the fit bottomed out on the zoom floor and the plate showed a
+    // dense unreadable knot adrift in empty sky. A survey plate frames where
+    // the exposure actually is, so the bounds come from a robust percentile
+    // and the few stragglers are simply allowed to sit off-plate — the viewer
+    // can still pan or zoom out to them.
+    const xs = [];
+    const ys = [];
+    let widestMargin = 0;
     this.nodes.forEach((node) => {
-      const margin = node.radius + 36;
-      minX = Math.min(minX, node.x - margin);
-      minY = Math.min(minY, node.y - margin);
-      maxX = Math.max(maxX, node.x + margin);
-      maxY = Math.max(maxY, node.y + margin);
+      xs.push(node.x);
+      ys.push(node.y);
+      widestMargin = Math.max(widestMargin, node.radius + 36);
     });
+    xs.sort((a, b) => a - b);
+    ys.sort((a, b) => a - b);
+    // With few nodes every one of them is the field, so keep true extremes.
+    const trim = xs.length >= 24 ? 0.04 : 0;
+    const lo = (values) => values[Math.floor((values.length - 1) * trim)];
+    const hi = (values) => values[Math.ceil((values.length - 1) * (1 - trim))];
+    const minX = lo(xs) - widestMargin;
+    const maxX = hi(xs) + widestMargin;
+    const minY = lo(ys) - widestMargin;
+    const maxY = hi(ys) + widestMargin;
 
     const padding = clamp(Math.min(this.width, this.height) * 0.1, 28, 84);
     const availableWidth = Math.max(1, this.width - padding * 2);
@@ -1209,8 +1242,9 @@ export class HeartGraph {
 
   drawBackground(context) {
     const palette = this.palette();
-    context.fillStyle = palette.background;
-    context.fillRect(0, 0, this.width, this.height);
+    // No fill here. The plate ground — emulsion fog plus the centre bloom — is
+    // painted by the page beneath this canvas, and render() has already cleared
+    // it. Filling would flatten that bloom into a slab of UI grey.
 
     context.save();
     context.lineWidth = 1;
@@ -1229,24 +1263,6 @@ export class HeartGraph {
       context.stroke();
     }
 
-    context.strokeStyle = palette.gridStrong;
-    context.strokeRect(16.5, 16.5, Math.max(0, this.width - 33), Math.max(0, this.height - 33));
-    const mark = 18;
-    const inset = 16.5;
-    const farX = this.width - inset;
-    const farY = this.height - inset;
-    for (const [x, y, horizontal, vertical] of [
-      [inset, inset, 1, 1],
-      [farX, inset, -1, 1],
-      [inset, farY, 1, -1],
-      [farX, farY, -1, -1],
-    ]) {
-      context.beginPath();
-      context.moveTo(x, y + vertical * mark);
-      context.lineTo(x, y);
-      context.lineTo(x + horizontal * mark, y);
-      context.stroke();
-    }
     context.restore();
   }
 
@@ -1623,6 +1639,13 @@ export class HeartGraph {
     } else {
       this.view.x += (width - oldWidth) / 2;
       this.view.y += (height - oldHeight) / 2;
+    }
+
+    // A fit deferred during boot finally has a box to fit into.
+    if (this.fitPending && width > 1 && height > 1) {
+      this.fitPending = false;
+      this.fit();
+      return;
     }
     this.requestDraw();
   }

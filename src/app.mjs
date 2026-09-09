@@ -559,9 +559,10 @@ function renderInspector() {
     const empty = element("div", { className: "selection-empty" });
     const orbit = element("div", { className: "selection-empty__orbit" });
     orbit.append(element("span"));
+    // Vocabulary rule: the plate states facts and actions, not slogans. The
+    // line that used to sit here ("关系不是排名…") named neither.
     empty.append(
       orbit,
-      element("p", { text: "关系不是排名，而是一张彼此连接的地图。" }),
       element("small", {
         text: "点选节点、连线，或使用左侧路径工具。",
       }),
